@@ -5,3 +5,11 @@ dist/
 .env
 .env.local
 .search-index-state.json
+
+# These are test artifacts created when the engine's own source dir is used
+# as a target project (e.g. running `codesearch init` in the engine root for
+# smoke testing). The engine is a package, not a project — the init scaffolding
+# belongs in the target project, not here.
+.codesearchrc.json
+.github/agents/
+.github/copilot-instructions.md

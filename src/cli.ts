@@ -21,6 +21,8 @@ import { serveAndWatchCommand } from './commands/serve-and-watch.js';
 import { mcpCommand } from './commands/mcp.js';
 import { statusCommand } from './commands/status.js';
 import { doctorCommand } from './commands/doctor.js';
+import { upCommand } from './commands/up.js';
+import { downCommand } from './commands/down.js';
 
 const program = new Command();
 
@@ -99,6 +101,27 @@ program
   .command('status')
   .description('Show collection stats, chunk count, and current config')
   .action(statusCommand);
+
+program
+  .command('up')
+  .description(
+    'One-shot bootstrap: init (if needed) → start Milvus → pull embedding model → run initial reindex (if empty) → start dev loop (HTTP + watcher). Idempotent — safe to re-run.',
+  )
+  .option(
+    '--port <n>',
+    'Milvus port offset (forwarded to init if .codesearchrc.json is missing)',
+    (v) => parseInt(v, 10),
+  )
+  .option('--no-index', 'skip the initial reindex step')
+  .option('--no-serve', 'stop after bootstrap; do not start the dev loop')
+  .action(upCommand);
+
+program
+  .command('down')
+  .description(
+    'Stop Milvus (docker compose down). Volumes are preserved — your index stays. Use `docker compose down -v` separately to also remove volumes.',
+  )
+  .action(downCommand);
 
 program.parseAsync().catch((err) => {
   console.error('codesearch: fatal:', err.message);
