@@ -73,11 +73,31 @@ The `init` command drops:
 - A `## Semantic Search (always run first)` block appended to every `.github/agents/*.agent.md` (with marker comments so re-runs are idempotent)
 - A `## 1.1 Codebase Semantic Search` section in `.github/copilot-instructions.md` (created if missing)
 
+### Running multiple codebases in parallel
+
+Docker container names are auto-namespaced by the compose project, so two projects no longer collide. To run two stacks side-by-side on the same machine, give the second one a port offset:
+
+```bash
+# In project A (default ports)
+npx codesearch init
+docker compose -f docker-compose.search.yml up -d
+
+# In project B
+npx codesearch init --port=19531 --search-port=7800
+MILVUS_PORT=19531 MILVUS_METRICS_PORT=19532 \
+  MINIO_API_PORT=19701 MINIO_CONSOLE_PORT=19702 \
+  docker compose -f docker-compose.search.yml -p project-b up -d
+```
+
+Each project gets its own Milvus data volume (named `<project>-milvus_data`), so indexes don't share or overwrite. The `init` command prints the right `docker compose` invocation with the env vars pre-filled — just copy-paste it.
+
 ## CLI
 
 | Command | What it does |
 |---|---|
 | `codesearch init` | Scaffold config + agent file snippets + docker-compose |
+| `codesearch init --port=19531` | Same, with a Milvus port offset for running multiple codebases in parallel |
+| `codesearch init --search-port=7800` | Same, with a custom HTTP API port |
 | `codesearch doctor` | Check Ollama, Milvus, embedding model availability |
 | `codesearch index` | Reindex the codebase (incremental by default) |
 | `codesearch index --full` | Drop the collection and rebuild from scratch |

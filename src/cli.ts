@@ -39,6 +39,16 @@ program
   .option('-f, --force', 'overwrite existing .codesearchrc.json')
   .option('--no-agent-files', 'skip writing agent file snippets')
   .option('--no-docker', 'skip copying docker-compose.search.yml')
+  .option(
+    '--port <n>',
+    'override Milvus gRPC port (default 19530). Use this to run multiple codebases in parallel on the same machine.',
+    (v) => parseInt(v, 10),
+  )
+  .option(
+    '--search-port <n>',
+    'override the Express HTTP API port (default 7700)',
+    (v) => parseInt(v, 10),
+  )
   .action(initCommand);
 
 program

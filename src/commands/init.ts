@@ -6,6 +6,8 @@ interface InitOptions {
   force?: boolean;
   agentFiles?: boolean;
   docker?: boolean;
+  port?: number;
+  searchPort?: number;
 }
 
 const CODESEARCHRC = {
@@ -141,12 +143,26 @@ export async function initCommand(opts: InitOptions): Promise<void> {
   const rcPath = path.join(cwd, '.codesearchrc.json');
   const composePath = path.join(cwd, 'docker-compose.search.yml');
 
+  // Compute the effective config. Port overrides let multiple codebases
+  // coexist on the same machine by namespacing host-side port mappings.
+  const effectiveMilvusPort = opts.port ?? 19530;
+  const effectiveSearchPort = opts.searchPort ?? 7700;
+  const effectiveMetricsPort = effectiveMilvusPort + 1; // 19531 → 9092
+  const effectiveMinioApiPort = effectiveMilvusPort + 170; // 19531 → 19701
+  const effectiveMinioConsolePort = effectiveMinioApiPort + 1; // 19702
+
+  const rcConfig = {
+    ...CODESEARCHRC,
+    milvusPort: effectiveMilvusPort,
+    searchPort: effectiveSearchPort,
+  };
+
   // 1. .codesearchrc.json
   if (fs.existsSync(rcPath) && !opts.force) {
     console.log(`[skip] ${rcPath} already exists (pass --force to overwrite)`);
   } else {
-    fs.writeFileSync(rcPath, JSON.stringify(CODESEARCHRC, null, 2) + '\n', 'utf-8');
-    console.log(`[write] ${rcPath}`);
+    fs.writeFileSync(rcPath, JSON.stringify(rcConfig, null, 2) + '\n', 'utf-8');
+    console.log(`[write] ${rcPath} (milvusPort: ${effectiveMilvusPort}, searchPort: ${effectiveSearchPort})`);
   }
 
   // 2. docker-compose.search.yml
@@ -183,8 +199,28 @@ export async function initCommand(opts: InitOptions): Promise<void> {
   }
 
   console.log('\n=== Next steps ===');
+
+  // Build the docker compose command. If the user overrode the port, we
+  // need to set the env vars so the host-side port mappings line up with
+  // the values in .codesearchrc.json.
+  const composeEnvVars: string[] = [];
+  if (effectiveMilvusPort !== 19530) {
+    composeEnvVars.push(`MILVUS_PORT=${effectiveMilvusPort}`);
+    composeEnvVars.push(`MILVUS_METRICS_PORT=${effectiveMetricsPort}`);
+    composeEnvVars.push(`MINIO_API_PORT=${effectiveMinioApiPort}`);
+    composeEnvVars.push(`MINIO_CONSOLE_PORT=${effectiveMinioConsolePort}`);
+  }
+  const composeCmd =
+    (composeEnvVars.length ? composeEnvVars.join(' ') + ' ' : '') +
+    'docker compose -f docker-compose.search.yml up -d';
+
   console.log('1. Start the vector DB:');
-  console.log('   docker compose -f docker-compose.search.yml up -d');
+  console.log(`   ${composeCmd}`);
+  if (composeEnvVars.length) {
+    console.log(
+      `   (the env vars shift the host-side port mappings so multiple projects can coexist)`,
+    );
+  }
   console.log('2. Make sure Ollama is running and the embedding model is pulled:');
   console.log('   ollama pull nomic-embed-text');
   console.log('3. Bootstrap the index:');
