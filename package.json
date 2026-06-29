@@ -1,0 +1,54 @@
+{
+  "name": "codebase-semantic-search",
+  "version": "0.1.0",
+  "description": "Local semantic search engine for any codebase. MCP + HTTP + file watcher. Reuses Ollama embeddings + Milvus vector storage.",
+  "type": "module",
+  "main": "dist/cli.js",
+  "bin": {
+    "codesearch": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "docker-compose.search.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "semantic-search",
+    "code-search",
+    "mcp",
+    "model-context-protocol",
+    "milvus",
+    "ollama",
+    "vector-search",
+    "embeddings",
+    "agents"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@zilliz/milvus2-sdk-node": "^2.4.9",
+    "chokidar": "^4.0.3",
+    "commander": "^12.1.0",
+    "express": "^4.21.0",
+    "glob": "^11.0.0",
+    "ignore": "^7.0.0",
+    "ts-morph": "^24.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
