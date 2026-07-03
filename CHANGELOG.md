@@ -8,9 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0-beta.1] - 2026-07-04
 
 ### Added
-- First npm release. Published under the `beta` dist-tag so `npx -y codebase-semantic-search`
-  does NOT resolve to it until promoted — install explicitly with
-  `npm install --save-dev codebase-semantic-search@beta` for now.
+- First npm release. Published under the `beta` dist-tag. Note: npmjs.org
+  auto-sets `latest` to the only published version, so until a stable
+  release is promoted via `npm dist-tag add codebase-semantic-search@<stable> latest`,
+  every install path (including `npm install codebase-semantic-search`,
+  `npm install @beta`, and `npx -y codebase-semantic-search`) resolves to
+  this beta. The version string `0.1.0-beta.1` is the load-bearing signal
+  that this is pre-release code — read this CHANGELOG before installing.
 - `codesearch init` — scaffolds `.codesearchrc.json`, `docker-compose.search.yml`,
   and agent/Copilot snippets in any project. Idempotent.
 - `codesearch up` — one-shot bootstrap: init-if-needed → start Milvus →
