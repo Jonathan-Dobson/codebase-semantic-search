@@ -36,13 +36,13 @@
     "name": "Jonathan Dobson",
     "email": "fromjdobson@gmail.com"
   },
-  "homepage": "https://github.com/jdobson/codebase-semantic-search#readme",
+  "homepage": "https://github.com/Jonathan-Dobson/codebase-semantic-search#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jdobson/codebase-semantic-search.git"
+    "url": "git+https://github.com/Jonathan-Dobson/codebase-semantic-search.git"
   },
   "bugs": {
-    "url": "https://github.com/jdobson/codebase-semantic-search/issues"
+    "url": "https://github.com/Jonathan-Dobson/codebase-semantic-search/issues"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
