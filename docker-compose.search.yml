@@ -38,7 +38,12 @@ services:
       - search-network
 
   milvus:
-    image: milvusdb/milvus:v2.4.4
+    # Bumped from v2.4.4 → v2.5.5 for multi-arch support (linux/amd64 +
+    # linux/arm64 in a single manifest). Apple Silicon users get native
+    # execution instead of QEMU-emulated x86_64. Set by `codesearch up` via
+    # the UNAME_M env var; defaults to linux/amd64 if unset (e.g. CI).
+    image: milvusdb/milvus:v2.5.5
+    platform: ${UNAME_M:-linux/amd64}
     command: ["milvus", "run", "standalone"]
     environment:
       ETCD_ENDPOINTS: etcd:2379
@@ -58,7 +63,7 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 30s
-      timeout: 20s
+      timeout: 10s
       retries: 3
 
 volumes:

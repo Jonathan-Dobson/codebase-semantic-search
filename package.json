@@ -1,6 +1,6 @@
 {
   "name": "codebase-semantic-search",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "Local semantic search engine for any codebase. MCP + HTTP + file watcher. Reuses Ollama embeddings + Milvus vector storage.",
   "type": "module",
   "main": "dist/cli.js",
@@ -12,7 +12,8 @@
     "templates",
     "docker-compose.search.yml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -31,6 +32,18 @@
     "agents"
   ],
   "license": "MIT",
+  "author": {
+    "name": "Jonathan Dobson",
+    "email": "fromjdobson@gmail.com"
+  },
+  "homepage": "https://github.com/jdobson/codebase-semantic-search#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jdobson/codebase-semantic-search.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jdobson/codebase-semantic-search/issues"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
     "@zilliz/milvus2-sdk-node": "^2.4.9",

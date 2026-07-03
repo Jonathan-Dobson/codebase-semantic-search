@@ -43,3 +43,13 @@ curl -s http://localhost:7700/search \
 - Finding relevant documentation sections
 
 **Response shape:** `{ success, data: { query, results: [{ filePath, symbolName, chunkType, startLine, endLine, content, score, module, language }], count } }`
+
+**Prerequisites (one-time, set up by the user):**
+- Node.js 20+
+- Docker with the Compose v2 plugin (`docker compose version`)
+- Ollama running locally on `http://127.0.0.1:11434`
+- `curl` on `$PATH`
+
+If this tool errors, suggest the user run `npx codesearch doctor` to confirm
+all four are reachable. Do not silently fall back to literal grep — surface
+the gap so the user knows the engine needs attention.

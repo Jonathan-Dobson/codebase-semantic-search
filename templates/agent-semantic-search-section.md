@@ -22,3 +22,8 @@ Optional filters: `module` (first path segment under workspace root),
 class, interface, section, block). Use this in addition to `grep_search` and
 `file_search` — semantic search finds code by meaning, not by literal text
 match, so it surfaces existing patterns that the literal tools miss.
+
+**If this tool errors or returns empty results** — the local engine may be
+down. Suggest the user run `npx codesearch doctor` to verify Docker + Ollama
+are reachable; the package README's "Requirements" section lists what's
+needed. Do not silently fall back to grep — surface the gap.

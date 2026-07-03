@@ -11,6 +11,64 @@ than by literal text match.
 - **Interfaces:** stdio MCP server (for agents) + HTTP API (for humans)
 - **Live updates:** chokidar file watcher with debounced incremental reindex
 
+## Requirements
+
+`codesearch up` shells out to three external things on your machine: Docker,
+Ollama, and `curl`. They must already be installed and reachable **before**
+you run `up`. The package itself is pure-JS and installs cleanly via npm on
+any platform Node 20+ runs on.
+
+| Need | Why | Where |
+|---|---|---|
+| **Node.js ≥ 20** | The `engines` requirement | any platform |
+| **Docker + Compose v2 plugin** (`docker compose …`) | Milvus Standalone stack (Milvus + etcd + MinIO) | uses ~600 MB of images on first pull |
+| **Ollama running** on `http://127.0.0.1:11434` | Provides the embedding endpoint. `up` will *throw* if it's not reachable — `up` does **not** auto-install Ollama (system service requires sudo, out of scope for an npm package) | see install notes below |
+| **Embedding model** (`nomic-embed-text`, ~270 MB) | `up` **auto-pulls** this once Ollama is running — but the first pull is slow | managed by `up` |
+| **`curl` on your `$PATH`** | `up` uses `curl` to probe Ollama | shipped on macOS / Linux; modern Windows too |
+
+**Verify nothing's missing:** `npx codesearch doctor` (works pre-`init`, prints one line per dep with status and the fix command if anything fails).
+
+### Install Ollama (one-time)
+
+| OS | Command |
+|---|---|
+| macOS | `brew install ollama && brew services start ollama` (or just `ollama serve` in another terminal) |
+| Linux | `curl -fsSL https://ollama.com/install.sh \| sh`, then `ollama serve` |
+| Windows | Install from [ollama.com/download](https://ollama.com/download), then `ollama serve` |
+
+To prefetch the embedding model (optional — `up` will do it for you):
+
+```bash
+ollama pull nomic-embed-text
+```
+
+### Footprint
+
+This is a chunky tool. Don't `up` it on a half-full laptop without expecting:
+
+- **Disk** — ~600 MB of Docker images + a few GB per project for the Milvus
+  index volume (`<project>_milvus_data`). First time is the biggest.
+- **Ports (defaults)** — `19530` Milvus gRPC, `9091` Milvus metrics, `9000`/`9001`
+  MinIO API/console, `2379` etcd, `7700` HTTP API. All overridable via
+  `.codesearchrc.json` or env vars (`MILVUS_PORT`, `SEARCH_PORT`, etc.).
+- **First-run time** — ~45s on Apple Silicon (the bundled Milvus image is
+  multi-arch, so Apple Silicon gets **native** `linux/arm64` execution — no
+  QEMU emulation), plus 30–60s for the initial index build depending on
+  codebase size.
+
+### Apple Silicon / ARM64
+
+**Native, not emulated.** The bundled Milvus image (`milvusdb/milvus:v2.5.5`)
+publishes a multi-arch manifest with both `linux/amd64` and `linux/arm64`
+digests. `codesearch up` automatically forwards your host architecture to
+Docker via the `UNAME_M` env var, so an M-series Mac pulls the native arm64
+image and Docker runs it directly — no Rosetta, no QEMU. Startup on M1/M2/M3
+is roughly the same as on `linux/amd64` (~45s for the stack + index build).
+
+If you'd rather pin the platform yourself (e.g. for CI on a mixed-architecture
+runner), set `UNAME_M=linux/amd64` (or `linux/arm64`) in the shell before
+running `codesearch up` and the bundled compose will respect it.
+
 ## Architecture
 
 ```
@@ -42,17 +100,23 @@ than by literal text match.
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Quickstart — the one-command way
+## Quickstart
 
 ```bash
 # 1. Install as a dev dep
 npm install --save-dev codebase-semantic-search
 
-# 2. One-shot bootstrap: init + start Milvus + pull model + initial reindex + start dev loop
+# 2. Confirm the runtime deps (Docker, Ollama, curl) — see "Requirements" above
+#    if any check fails. This is one-time; re-running `up` is still idempotent.
+npx codesearch doctor
+
+# 3. One-shot bootstrap: init + start Milvus + pull model + initial reindex + start dev loop
 npx codesearch up
 ```
 
 That's it. `up` is idempotent — re-running it skips anything that's already set up. It blocks in the foreground running the HTTP server + file watcher; Ctrl+C to stop the dev loop (Milvus keeps running). To stop Milvus too, run `npx codesearch down`.
+
+> **If `up` fails on first run,** it's almost always a missing dep. Run `npx codesearch doctor` and follow the fix it prints — usually it's "Ollama not running" or "Docker compose stack not up."
 
 ### The underlying subcommands
 

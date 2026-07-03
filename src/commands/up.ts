@@ -136,6 +136,13 @@ function startMilvus(): void {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
   };
+  // Pass the host arch so the milvus service's `platform:` directive
+  // (e.g. `platform: ${UNAME_M:-linux/amd64}`) pulls the right native
+  // image. Falls back to linux/amd64 on unknown arches (covers x86_64,
+  // ia32, anything not arm64). On Apple Silicon, process.arch is 'arm64'
+  // for native Node; if a user runs Node under Rosetta, they'll get
+  // the emulated x86_64 path (acceptable trade-off).
+  env.UNAME_M = `linux/${process.arch === 'arm64' ? 'arm64' : 'amd64'}`;
   // Only set if the config is non-default. The compose file's own
   // ${VAR:-default} handles the default case.
   if (CONFIG.milvusPort !== 19530) {
