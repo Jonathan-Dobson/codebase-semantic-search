@@ -73,8 +73,14 @@ server.tool(
       .describe(
         'Drop hits below this cosine-similarity score (0..1). Quality filter applied AFTER the vector search, so you may receive fewer than top_k results. Bump top_k if you need a guaranteed minimum count.',
       ),
+    include: z
+      .array(z.enum(['chunkType', 'module', 'language']))
+      .optional()
+      .describe(
+        'Opt-in to include these metadata fields on each result. Default response omits chunkType, module, language — they are useful as filter inputs (chunk_type, module, language above) but largely redundant as response fields (derivable from filePath and content).',
+      ),
   },
-  async ({ query, top_k, module, language, chunk_type, min_score }) => {
+  async ({ query, top_k, module, language, chunk_type, min_score, include }) => {
     try {
       const topK = top_k ?? 10;
       const queryEmbedding = await embedQuery(query);
@@ -89,31 +95,41 @@ server.tool(
       const filtered =
         min_score !== undefined ? rawResults.filter((r) => r.score >= min_score) : rawResults;
 
+      const includedFields = new Set(include ?? []);
+
       // Register each surviving hit in the in-memory clip store so callers
       // can fetch the full text by short numeric id via codebase_clip.
-      // Dedup is keyed on (filePath, startLine, endLine).
+      // Dedup is keyed on (filePath, startLine, endLine). Build lean
+      // result objects by default; only add chunkType / module / language
+      // when explicitly requested via `include`.
       const payload: Record<string, unknown> = {
         query,
         count: filtered.length,
         topK,
         filters: { module, language, chunkType: chunk_type },
         clipStoreSize: clipStoreSize(),
-        results: filtered.map((r) => ({
-          id: putClip(r.filePath, r.startLine, r.endLine),
-          filePath: r.filePath,
-          symbolName: r.symbolName || null,
-          chunkType: r.chunkType,
-          startLine: r.startLine,
-          endLine: r.endLine,
-          score: Number(r.score.toFixed(4)),
-          module: r.module,
-          language: r.language,
-          content: r.content,
-        })),
+        results: filtered.map((r) => {
+          const out: Record<string, unknown> = {
+            id: putClip(r.filePath, r.startLine, r.endLine),
+            filePath: r.filePath,
+            symbolName: r.symbolName || null,
+            score: Number(r.score.toFixed(4)),
+            startLine: r.startLine,
+            endLine: r.endLine,
+            content: r.content,
+          };
+          if (includedFields.has('chunkType')) out.chunkType = r.chunkType;
+          if (includedFields.has('module')) out.module = r.module;
+          if (includedFields.has('language')) out.language = r.language;
+          return out;
+        }),
       };
       if (min_score !== undefined) {
         payload.minScore = min_score;
         payload.candidatesBeforeFilter = rawResults.length;
+      }
+      if (includedFields.size > 0) {
+        payload.includedFields = Array.from(includedFields);
       }
 
       return {

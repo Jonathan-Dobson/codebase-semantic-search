@@ -74,24 +74,24 @@ Recommended bands:
 
 ### Response shape
 
+Default response is **lean** — only the always-useful fields:
+
 ```json
 {
   "success": true,
   "data": {
     "query": "...",
     "count": 10,
+    "topK": 10,
     "clipStoreSize": 142,
     "results": [
       {
         "id": 42,
         "filePath": "server/src/modules/billing/routes.ts",
         "symbolName": "createInvoice",
-        "chunkType": "function",
+        "score": 0.842,
         "startLine": 42,
         "endLine": 80,
-        "score": 0.842,
-        "module": "server/src/modules/billing",
-        "language": "typescript",
         "content": "export async function createInvoice(req, res) { ... }"
       }
     ]
@@ -107,13 +107,25 @@ Recommended bands:
 | `score`              | 0..1 cosine similarity. ≥0.75 = strong match, 0.55–0.75 = worth reviewing, <0.55 = likely noise |
 | `filePath`           | Path relative to workspace root                                              |
 | `symbolName`         | Function/class/interface name when the chunk is a symbol; `null` otherwise    |
-| `chunkType`          | `function`, `class`, `interface`, `section`, `block`, etc.                    |
 | `startLine`/`endLine`| 1-indexed inclusive line range in `filePath`                                  |
 | `content`            | The chunk text itself — read THIS before opening the whole file              |
-| `module`             | First path segment (mirrors the `module` filter value)                        |
-| `language`           | File language (mirrors the `language` filter value)                           |
 
-`clipStoreSize` reports the current in-memory clip-store size (FIFO capped at 10K entries; cleared on server restart).
+`clipStoreSize` reports the current in-memory clip-store size (FIFO capped at 10K entries; cleared on server restart). When `min_score` is set, `minScore` + `candidatesBeforeFilter` are also in `data`. When `include` is set, the chosen fields are added to each result and `includedFields` is echoed in `data`.
+
+#### Opt-in metadata: `include`
+
+`chunkType`, `module`, `language` are **not in the default response** — they are useful as filter inputs but largely redundant in the response (you can read `module` from the first `/`-segment of `filePath`, and `language` from its extension; `chunkType` is usually obvious from `content`). Opt-in only when you actually need them:
+
+```jsonc
+// MCP / HTTP
+{
+  "query": "how invoices are created",
+  "top_k": 10,
+  "include": ["chunkType", "module", "language"]
+}
+```
+
+Each hit then also carries those fields. Allowed values: `"chunkType"`, `"module"`, `"language"`. Unknown value → HTTP 400 / MCP `isError` with the allowed list.
 
 ### Two ways to fetch the full text of a chunk
 

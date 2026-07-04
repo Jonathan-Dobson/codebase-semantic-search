@@ -15,6 +15,38 @@ import { readFileSlice, READ_MAX_RANGE, READ_MAX_FILE_SIZE } from './read-clip.j
 // even if a caller dumps the entire store into one request.
 const MAX_BATCH_IDS = 500;
 
+// Optional metadata fields that callers can opt-in to via `include`.
+// Default /search response omits these — chunkType / module / language are
+// useful as filter inputs but largely redundant as response fields (they
+// can be derived from filePath + content). Opt-in keeps the default lean.
+const ALLOWED_INCLUDE_FIELDS = ['chunkType', 'module', 'language'] as const;
+type IncludeField = (typeof ALLOWED_INCLUDE_FIELDS)[number];
+
+function parseInclude(
+  raw: unknown,
+): { ok: true; fields: Set<IncludeField> } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) {
+    return { ok: true, fields: new Set() };
+  }
+  if (!Array.isArray(raw)) {
+    return { ok: false, error: 'include must be an array of strings' };
+  }
+  const fields = new Set<IncludeField>();
+  for (const v of raw) {
+    if (typeof v !== 'string') {
+      return { ok: false, error: 'include items must be strings' };
+    }
+    if (!(ALLOWED_INCLUDE_FIELDS as readonly string[]).includes(v)) {
+      return {
+        ok: false,
+        error: `include contains unknown field "${v}". Allowed values: ${ALLOWED_INCLUDE_FIELDS.join(', ')}`,
+      };
+    }
+    fields.add(v as IncludeField);
+  }
+  return { ok: true, fields };
+}
+
 export function createApp(): Express {
   const app = express();
   app.use(express.json());
@@ -34,7 +66,7 @@ export function createApp(): Express {
 
   app.post('/search', async (req, res) => {
     try {
-      const { query, top_k = 10, module, language, chunk_type, min_score } = req.body;
+      const { query, top_k = 10, module, language, chunk_type, min_score, include } = req.body;
 
       if (!query || typeof query !== 'string') {
         res
@@ -44,6 +76,15 @@ export function createApp(): Express {
       }
 
       const topK = Math.min(Math.max(1, Number(top_k) || 10), 50);
+
+      // Parse include opt-in. Default = empty set (lean response, omits
+      // chunkType / module / language). Unknown value or wrong type = 400.
+      const includeResult = parseInclude(include);
+      if (!includeResult.ok) {
+        res.status(400).json({ success: false, error: includeResult.error });
+        return;
+      }
+      const includedFields = includeResult.fields;
 
       // Optional min_score filter: drop hits below the threshold AFTER the
       // vector search. This means we may return fewer than top_k — the
@@ -79,21 +120,23 @@ export function createApp(): Express {
         ? rawResults.filter((r) => r.score >= minScore)
         : rawResults;
 
-      // Register each surviving hit in the in-memory clip store so callers
-      // can fetch the full text by short numeric id via /clip/:id. Dedup
-      // is keyed on (filePath, startLine, endLine).
-      const resultsWithIds = filtered.map((r: SearchResult) => ({
-        id: putClip(r.filePath, r.startLine, r.endLine),
-        filePath: r.filePath,
-        symbolName: r.symbolName || null,
-        chunkType: r.chunkType,
-        startLine: r.startLine,
-        endLine: r.endLine,
-        score: Number(r.score.toFixed(4)),
-        module: r.module,
-        language: r.language,
-        content: r.content,
-      }));
+      // Build lean result objects by default; add chunkType / module /
+      // language only when explicitly requested via `include`.
+      const resultsWithIds = filtered.map((r: SearchResult) => {
+        const out: Record<string, unknown> = {
+          id: putClip(r.filePath, r.startLine, r.endLine),
+          filePath: r.filePath,
+          symbolName: r.symbolName || null,
+          score: Number(r.score.toFixed(4)),
+          startLine: r.startLine,
+          endLine: r.endLine,
+          content: r.content,
+        };
+        if (includedFields.has('chunkType')) out.chunkType = r.chunkType;
+        if (includedFields.has('module')) out.module = r.module;
+        if (includedFields.has('language')) out.language = r.language;
+        return out;
+      });
 
       const data: Record<string, unknown> = {
         query,
@@ -105,6 +148,9 @@ export function createApp(): Express {
       if (minScoreApplied) {
         data.minScore = minScore;
         data.candidatesBeforeFilter = rawResults.length;
+      }
+      if (includedFields.size > 0) {
+        data.includedFields = Array.from(includedFields);
       }
 
       res.json({

@@ -198,11 +198,19 @@ Content-Type: application/json
   "module": "platform",         // optional filter
   "language": "typescript",     // optional filter
   "chunk_type": "function",     // optional filter
-  "min_score": 0.7              // optional quality threshold (0..1)
+  "min_score": 0.7,             // optional quality threshold (0..1)
+  "include": ["chunkType", "module", "language"]  // optional opt-in metadata
 }
 ```
 
-Response: `{ success, data: { query, results: [{ id, filePath, symbolName, chunkType, startLine, endLine, content, score, module, language }], count, topK, clipStoreSize, minScore?, candidatesBeforeFilter? } }`.
+**Default response is lean** — each hit carries only the always-useful
+fields: `id`, `filePath`, `symbolName`, `score`, `startLine`, `endLine`,
+`content`. The `chunkType`, `module`, `language` fields are **opt-in** via
+`include` (see below) — they're useful as filter inputs but largely
+redundant in the response (you can derive them from `filePath` and
+`content`).
+
+Response: `{ success, data: { query, results: [{ id, filePath, symbolName, score, startLine, endLine, content, ...optional includes }], count, topK, clipStoreSize, minScore?, candidatesBeforeFilter?, includedFields? } }`.
 
 - `score` is 0..1 cosine similarity — ≥0.75 = strong, 0.55–0.75 = review,
   <0.55 = likely noise.
@@ -212,6 +220,19 @@ Response: `{ success, data: { query, results: [{ id, filePath, symbolName, chunk
 - `clipStoreSize` reports the current in-memory clip-store size.
 - `minScore` and `candidatesBeforeFilter` are echoed only when `min_score`
   was supplied.
+- `includedFields` is echoed only when `include` was supplied.
+
+#### `include` — opt-in metadata fields
+
+```jsonc
+{
+  "include": ["chunkType", "module", "language"]  // any subset
+}
+```
+
+Allowed values: `"chunkType"`, `"module"`, `"language"`. Unknown value or
+wrong type (e.g. a string instead of an array) returns HTTP 400 with the
+allowed list. Omit or pass `[]` for the lean default.
 
 #### `min_score` semantics
 
@@ -355,10 +376,13 @@ Spawns a stdio MCP server exposing four tools:
   `query` (natural language), `top_k` (1–50, default 10), `module`,
   `language`, `chunk_type`, `min_score` (optional filters; `min_score`
   drops hits below the cosine-similarity threshold after the vector
-  search). Returns ranked hits with `id`, `filePath`, `symbolName`,
-  `chunkType`, `startLine`, `endLine`, `content`, `score`, `module`,
-  `language`. When `min_score` is set, response also includes
-  `minScore` and `candidatesBeforeFilter`.
+  search), `include` (opt-in metadata fields to add to each result).
+  Default response is lean: `id`, `filePath`, `symbolName`, `score`,
+  `startLine`, `endLine`, `content`. Pass `include: ["chunkType",
+  "module", "language"]` (any subset) to opt in to the metadata fields.
+  When `min_score` is set, response also includes `minScore` and
+  `candidatesBeforeFilter`. When `include` is set, response also
+  includes `includedFields`.
 - `codebase_clip` — fetch a clip by its short numeric id from the
   in-memory store. Args: EITHER `id: number` (single) OR `ids: number[]`
   (batch). Ids are assigned by `codebase_semantic_search` and are valid

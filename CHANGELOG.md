@@ -56,6 +56,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `isError`. When set, the response echoes `minScore` and
   `candidatesBeforeFilter` so callers can see how aggressive the filter
   was. Recommended bands: ≥0.75 = strong, 0.55–0.75 = review, <0.55 = noise.
+- **`include` parameter on `POST /search` and `codebase_semantic_search`** —
+  opt-in metadata fields on each result. Default response is now lean
+  (omits `chunkType`, `module`, `language`); pass
+  `include: ["chunkType", "module", "language"]` (any subset) to opt
+  back in. These fields are still useful as filter inputs (`chunk_type`,
+  `module`, `language` on the request), they are just no longer echoed
+  in every result by default — they can be derived from `filePath` and
+  `content`. Allowed values: `"chunkType"`, `"module"`, `"language"`.
+  Unknown value or wrong type returns HTTP 400 with the allowed list.
+  When `include` is set, response also includes `includedFields`.
+
+### Changed (breaking)
+
+- **`POST /search` and `codebase_semantic_search` response shape** —
+  the per-result fields `chunkType`, `module`, `language` are no longer
+  included by default. Default response now contains only the
+  always-useful set: `id`, `filePath`, `symbolName`, `score`,
+  `startLine`, `endLine`, `content`. **This is a breaking change** for
+  any caller that was reading those three fields in the response. To
+  restore the old behavior, pass `include: ["chunkType", "module",
+  "language"]` on every request. Migration is mechanical: add the
+  `include` param to every search call. Documented in README and
+  templates; rationale is that those fields are largely redundant in
+  the response (derivable from `filePath` / `content`) and were wasting
+  tokens on every search.
 
 ### Changed
 - README `HTTP API` section now documents `/search`, `/read`, `/clip/:id`,

@@ -27,6 +27,15 @@ AFTER the vector search — you may get fewer than `top_k` results, bump
 `top_k` if you need a guaranteed count). Combine filters with `query` to
 narrow fast.
 
+### Response is lean by default
+
+Default response per hit: `id`, `filePath`, `symbolName`, `score`,
+`startLine`, `endLine`, `content`. The `chunkType`, `module`, `language`
+fields are **opt-in** via `include` — they're useful as filter inputs
+but largely redundant in the response (derivable from `filePath` and
+`content`). Pass `include: ["chunkType", "module", "language"]` (or a
+subset) only when you actually need them.
+
 ### Read the results
 
 Each hit carries a short numeric **`id`** alongside `filePath`/`startLine`/
@@ -39,11 +48,11 @@ when you want to construct a different range.
 | `score`              | 0..1 cosine similarity. ≥0.75 = strong, 0.55–0.75 = review, <0.55 = noise    |
 | `filePath`           | Path relative to workspace root                                              |
 | `symbolName`         | Function/class/interface name when the chunk is a symbol; `null` otherwise   |
-| `chunkType`          | `function`, `class`, `interface`, `section`, `block`, …                       |
 | `startLine`/`endLine`| 1-indexed inclusive line range in `filePath`                                  |
 | `content`            | The chunk text itself — read THIS before opening the whole file              |
-| `module`             | First path segment (matches the `module` filter)                              |
-| `language`           | File language (matches the `language` filter)                                 |
+
+Opt-in (request `include: [...]` to receive): `chunkType`, `module`,
+`language`. Useful as filter inputs but redundant in the response.
 
 ### Two ways to fetch the full text
 
