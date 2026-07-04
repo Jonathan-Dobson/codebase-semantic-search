@@ -198,7 +198,8 @@ Content-Type: application/json
   "module": "platform",         // optional filter
   "language": "typescript",     // optional filter
   "chunk_type": "function",     // optional filter
-  "min_score": 0.7,             // optional quality threshold (0..1)
+  "min_score": 0.7,             // optional absolute quality threshold (0..1)
+  "min_score_diff": 0.1,        // optional relative threshold (0..1); mutually exclusive with min_score
   "include": ["chunkType", "module", "language"],  // optional opt-in metadata
   "format": "json"              // optional response format; default "markdown"
 }
@@ -342,6 +343,37 @@ Recommended bands:
 Validation: `min_score` must be a finite number in `[0, 1]`. Out-of-range
 or non-numeric values return HTTP 400.
 
+#### `min_score_diff` semantics (relative threshold)
+
+Alternative to `min_score`. The threshold is computed from the best hit in
+the result set: `appliedThreshold = max_score - min_score_diff`. Drop any
+hit whose score is below that. Useful when you don't know the absolute
+score distribution in advance — "everything within 0.1 of the best match"
+is often more meaningful than "everything above 0.7".
+
+Mutually exclusive with `min_score` — passing both returns HTTP 400.
+
+Response echo when applied:
+
+```json
+{
+  "minScoreDiff": 0.1,
+  "appliedThreshold": 0.7146,
+  "maxScore": 0.8146,
+  "candidatesBeforeFilter": 10
+}
+```
+
+Recommended bands:
+- **0.05–0.15** — strict; typically keeps 3–8 hits on a sizeable codebase
+  with `top_k: 10`.
+- **0.2–0.3** — lenient; useful when the top match is strong but the
+  semantic space drops off sharply below it.
+
+Validation: `min_score_diff` must be a finite number in `[0, 1]`.
+Out-of-range or non-numeric values return HTTP 400. Threshold is clamped
+at 0 if `max_score` is 0 (pathological).
+
 ### `GET /clip/:id` — fetch one clip by its short id
 
 ```
@@ -465,19 +497,21 @@ Spawns a stdio MCP server exposing four tools:
 
 - `codebase_semantic_search` — query the index by meaning. Args:
   `query` (natural language), `top_k` (1–50, default 10), `module`,
-  `language`, `chunk_type`, `min_score` (optional filters; `min_score`
-  drops hits below the cosine-similarity threshold after the vector
-  search), `include` (opt-in metadata fields to add to each result),
-  `format` (response format: `"markdown"` default or `"json"` opt-in).
-  **Default response is a single markdown document** with a `# Search: "..."`
-  title and per-hit code fences + metadata captions. Pass
-  `format: "json"` for the structured response. When `format: "json"`,
-  default per-hit fields are `id`, `filePath`, `symbolName`, `score`,
-  `startLine`, `endLine`, `content` (lean); pass
-  `include: ["chunkType", "module", "language"]` to opt in to the
-  metadata fields. When `min_score` is set, response also includes
-  `minScore` and `candidatesBeforeFilter`. When `include` is set,
-  response also includes `includedFields`.
+  `language`, `chunk_type`, `min_score` (absolute quality threshold,
+  0..1), `min_score_diff` (relative quality threshold, 0..1,
+  mutually exclusive with `min_score`), `include` (opt-in metadata
+  fields to add to each result), `format` (response format:
+  `"markdown"` default or `"json"` opt-in). **Default response is a
+  single markdown document** with a `# Search: "..."` title and per-hit
+  code fences + metadata captions. Pass `format: "json"` for the
+  structured response. When `format: "json"`, default per-hit fields are
+  `id`, `filePath`, `symbolName`, `score`, `startLine`, `endLine`,
+  `content` (lean); pass `include: ["chunkType", "module", "language"]`
+  to opt in to the metadata fields. When `min_score` is set, response
+  also includes `minScore` and `candidatesBeforeFilter`. When
+  `min_score_diff` is set, response also includes `minScoreDiff`,
+  `appliedThreshold`, `maxScore`, and `candidatesBeforeFilter`. When
+  `include` is set, response also includes `includedFields`.
 - `codebase_clip` — fetch a clip by its short numeric id from the
   in-memory store. Args: EITHER `id: number` (single) OR `ids: number[]`
   (batch). Ids are assigned by `codebase_semantic_search` and are valid

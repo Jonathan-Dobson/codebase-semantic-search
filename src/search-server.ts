@@ -96,6 +96,7 @@ export function createApp(): Express {
         language,
         chunk_type,
         min_score,
+        min_score_diff,
         include,
         format,
       } = req.body;
@@ -127,11 +128,8 @@ export function createApp(): Express {
       }
       const includedFields = includeResult.fields;
 
-      // Optional min_score filter: drop hits below the threshold AFTER the
-      // vector search. This means we may return fewer than top_k — the
-      // caller asked for "up to top_k results that score >= min_score",
-      // which is a quality filter, not a guarantee of count. Bump top_k
-      // if you need a guaranteed minimum count.
+      // Optional absolute threshold (min_score): drop hits below the
+      // floor. Mutual exclusion with min_score_diff is checked below.
       let minScore = 0;
       let minScoreApplied = false;
       if (min_score !== undefined && min_score !== null) {
@@ -147,6 +145,31 @@ export function createApp(): Express {
         minScoreApplied = true;
       }
 
+      // Optional relative threshold (min_score_diff): drop hits whose
+      // score is more than this far below the best hit. Decimal 0..1.
+      // Mutually exclusive with min_score.
+      let minScoreDiff = 0;
+      let minScoreDiffApplied = false;
+      if (min_score_diff !== undefined && min_score_diff !== null) {
+        if (minScoreApplied) {
+          res.status(400).json({
+            success: false,
+            error: 'min_score and min_score_diff are mutually exclusive — pick one',
+          });
+          return;
+        }
+        const parsed = Number(min_score_diff);
+        if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+          res.status(400).json({
+            success: false,
+            error: 'min_score_diff must be a finite number between 0 and 1 (inclusive)',
+          });
+          return;
+        }
+        minScoreDiff = parsed;
+        minScoreDiffApplied = true;
+      }
+
       const filters: SearchFilters = {};
       if (module) filters.module = String(module);
       if (language) filters.language = String(language);
@@ -155,11 +178,22 @@ export function createApp(): Express {
       const queryEmbedding = await embedQuery(query);
       const rawResults = await searchChunks(queryEmbedding, topK, filters);
 
-      // Apply min_score filter (if any) before registering clips, so the
+      // Apply quality filter (if any) before registering clips, so the
       // clip store doesn't accumulate entries the caller never saw.
-      const filtered = minScoreApplied
-        ? rawResults.filter((r) => r.score >= minScore)
-        : rawResults;
+      let filtered = rawResults;
+      let appliedThreshold: number | undefined;
+      let maxScore: number | undefined;
+      if (minScoreDiffApplied && rawResults.length > 0) {
+        maxScore = rawResults.reduce((m, r) => Math.max(m, r.score), 0);
+        // Clamp the threshold at 0 so a degenerate maxScore=0 doesn't
+        // produce a negative cutoff.
+        const threshold = Math.max(0, maxScore - minScoreDiff);
+        appliedThreshold = threshold;
+        filtered = rawResults.filter((r) => r.score >= threshold);
+      } else if (minScoreApplied) {
+        appliedThreshold = minScore;
+        filtered = rawResults.filter((r) => r.score >= minScore);
+      }
 
       // Register a clip id for every surviving hit (needed by both formats).
       const hitsWithIds = filtered.map((r: SearchResult) => ({
@@ -198,6 +232,7 @@ export function createApp(): Express {
           count: mdHits.length,
           topK,
           minScore: minScoreApplied ? minScore : undefined,
+          minScoreDiff: minScoreDiffApplied ? minScoreDiff : undefined,
           includedFields: includedArr as IncludeField[] | undefined,
           clipStoreSize: clipStoreSize(),
           hits: mdHits,
@@ -233,6 +268,12 @@ export function createApp(): Express {
       };
       if (minScoreApplied) {
         data.minScore = minScore;
+        data.candidatesBeforeFilter = rawResults.length;
+      }
+      if (minScoreDiffApplied) {
+        data.minScoreDiff = minScoreDiff;
+        data.appliedThreshold = appliedThreshold;
+        data.maxScore = maxScore;
         data.candidatesBeforeFilter = rawResults.length;
       }
       if (includedFields.size > 0) {

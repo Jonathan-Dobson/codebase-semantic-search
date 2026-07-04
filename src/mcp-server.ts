@@ -72,7 +72,15 @@ server.tool(
       .max(1)
       .optional()
       .describe(
-        'Drop hits below this cosine-similarity score (0..1). Quality filter applied AFTER the vector search, so you may receive fewer than top_k results. Bump top_k if you need a guaranteed minimum count.',
+        'Drop hits below this cosine-similarity score (0..1). Absolute quality filter applied AFTER the vector search, so you may receive fewer than top_k results. Bump top_k if you need a guaranteed minimum count. Mutually exclusive with min_score_diff.',
+      ),
+    min_score_diff: z
+      .number()
+      .min(0)
+      .max(1)
+      .optional()
+      .describe(
+        'Relative quality filter: drop hits whose score is more than this far below the best hit. Decimal in [0, 1]. Threshold = max_score - min_score_diff. Mutually exclusive with min_score.',
       ),
     include: z
       .array(z.enum(['chunkType', 'module', 'language']))
@@ -88,8 +96,30 @@ server.tool(
         'Response format. Default "markdown" — single document with a "# Search: ..." title, per-hit code fence, and metadata caption. Pass "json" for the structured lean response with `include` opt-in fields.',
       ),
   },
-  async ({ query, top_k, module, language, chunk_type, min_score, include, format }) => {
+  async ({
+    query,
+    top_k,
+    module,
+    language,
+    chunk_type,
+    min_score,
+    min_score_diff,
+    include,
+    format,
+  }) => {
     try {
+      if (min_score !== undefined && min_score_diff !== undefined) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: 'codebase_semantic_search failed: min_score and min_score_diff are mutually exclusive — pick one',
+            },
+          ],
+        };
+      }
+
       const topK = top_k ?? 10;
       const queryEmbedding = await embedQuery(query);
       const rawResults = await searchChunks(queryEmbedding, topK, {
@@ -98,10 +128,20 @@ server.tool(
         chunkType: chunk_type,
       });
 
-      // Apply min_score filter (if any) before registering clips, so the
+      // Apply quality filter (if any) before registering clips, so the
       // clip store doesn't accumulate entries the caller never saw.
-      const filtered =
-        min_score !== undefined ? rawResults.filter((r) => r.score >= min_score) : rawResults;
+      let filtered = rawResults;
+      let appliedThreshold: number | undefined;
+      let maxScore: number | undefined;
+      if (min_score_diff !== undefined && rawResults.length > 0) {
+        maxScore = rawResults.reduce((m, r) => Math.max(m, r.score), 0);
+        const threshold = Math.max(0, maxScore - min_score_diff);
+        appliedThreshold = threshold;
+        filtered = rawResults.filter((r) => r.score >= threshold);
+      } else if (min_score !== undefined) {
+        appliedThreshold = min_score;
+        filtered = rawResults.filter((r) => r.score >= min_score);
+      }
 
       const includedFields = new Set(include ?? []);
 
@@ -141,6 +181,7 @@ server.tool(
           count: mdHits.length,
           topK,
           minScore: min_score,
+          minScoreDiff: min_score_diff,
           includedFields: includedArr,
           clipStoreSize: clipStoreSize(),
           hits: mdHits,
@@ -175,6 +216,12 @@ server.tool(
       };
       if (min_score !== undefined) {
         payload.minScore = min_score;
+        payload.candidatesBeforeFilter = rawResults.length;
+      }
+      if (min_score_diff !== undefined) {
+        payload.minScoreDiff = min_score_diff;
+        payload.appliedThreshold = appliedThreshold;
+        payload.maxScore = maxScore;
         payload.candidatesBeforeFilter = rawResults.length;
       }
       if (includedFields.size > 0) {

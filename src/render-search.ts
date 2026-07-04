@@ -32,6 +32,7 @@ export interface MarkdownArgs {
   count: number;
   topK: number;
   minScore?: number;
+  minScoreDiff?: number;
   includedFields?: string[];
   clipStoreSize: number;
   hits: MarkdownHit[];
@@ -46,6 +47,7 @@ export function renderSearchMarkdown(args: MarkdownArgs): string {
   summary.push(`${args.count} ${args.count === 1 ? 'result' : 'results'}`);
   summary.push(`top_k: ${args.topK}`);
   if (args.minScore !== undefined) summary.push(`min_score: ${args.minScore}`);
+  if (args.minScoreDiff !== undefined) summary.push(`min_score_diff: ${args.minScoreDiff}`);
   if (args.includedFields && args.includedFields.length > 0) {
     summary.push(`included: ${args.includedFields.join(', ')}`);
   }

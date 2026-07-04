@@ -71,6 +71,7 @@ src/transactions/clawback.ts:18-38 • ClawbackTx • score: 0.7353 • id: 2
 | `language`   | file language                                  | `typescript`, `tsx`, `javascript`, `markdown`, `json`, `yaml`, `terraform`, `python` |
 | `chunk_type` | AST node type (TS/JS) or section kind (md)     | `function`, `class`, `interface`, `section`, `block` |
 | `min_score`  | minimum cosine-similarity score (0..1)         | `0.75` for "strong matches only"                  |
+| `min_score_diff` | max distance below best hit (0..1)         | `0.1` for "everything within 10% of the top match" |
 
 Combine with `query` to narrow fast. Example — find the TypeScript function that handles a specific HTTP error, requiring a high-quality match:
 
@@ -84,7 +85,7 @@ Combine with `query` to narrow fast. Example — find the TypeScript function th
 }
 ```
 
-#### `min_score` semantics
+#### `min_score` semantics (absolute threshold)
 
 Quality filter applied **after** the vector search: the engine asks Milvus
 for `top_k` candidates, then drops anything below `min_score`. So you may
@@ -108,7 +109,42 @@ you can see how aggressive the filter was:
 }
 ```
 
+#### `min_score_diff` semantics (relative threshold)
+
+Alternative to `min_score`. Threshold is computed from the best hit in
+the result set: `appliedThreshold = max_score - min_score_diff`. Useful
+when you don't know the absolute score distribution in advance — "show
+me everything within 0.1 of the best match" is often more meaningful
+than "show me everything above 0.7".
+
+Mutually exclusive with `min_score` — passing both returns HTTP 400 /
+MCP `isError`.
+
+When set, the response echoes `minScoreDiff`, `appliedThreshold`,
+`maxScore`, and `candidatesBeforeFilter`:
+
+```json
+{
+  "data": {
+    "query": "...",
+    "count": 4,
+    "topK": 10,
+    "minScoreDiff": 0.1,
+    "appliedThreshold": 0.7146,
+    "maxScore": 0.8146,
+    "candidatesBeforeFilter": 10,
+    "results": [ ... ]
+  }
+}
+```
+
 Recommended bands:
+- **0.05–0.15** — strict relative threshold; typically keeps 3–8 hits
+  on a sizeable codebase with `top_k: 10`.
+- **0.2–0.3** — lenient; useful when the top match is strong but the
+  semantic space drops off sharply below it.
+
+Recommended bands (absolute `min_score`):
 - **0.75+** — strong, relevant matches; safe to act on.
 - **0.55–0.75** — worth reviewing; context may help disambiguate.
 - **< 0.55** — likely noise; widen the query or add filters instead of

@@ -22,10 +22,12 @@ curl -s http://localhost:7700/search -H "Content-Type: application/json" \
 Optional filters: `module` (first path segment under the workspace root),
 `language` (typescript, tsx, javascript, markdown, json, yaml, terraform,
 python, …), `chunk_type` (function, class, interface, section, block),
-`min_score` (0..1 cosine-similarity threshold; drops lower-scoring hits
-AFTER the vector search — you may get fewer than `top_k` results, bump
-`top_k` if you need a guaranteed count). Combine filters with `query` to
-narrow fast.
+`min_score` (0..1 absolute cosine-similarity threshold; drops
+lower-scoring hits AFTER the vector search), `min_score_diff` (0..1
+relative threshold; drops hits whose score is more than this far below
+the best hit — threshold = `max_score - min_score_diff`). `min_score`
+and `min_score_diff` are mutually exclusive — pick one. Combine filters
+with `query` to narrow fast.
 
 ### Response format: markdown by default
 

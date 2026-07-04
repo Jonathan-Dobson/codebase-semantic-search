@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`min_score_diff` parameter on `POST /search` and
+  `codebase_semantic_search`** — relative quality filter. Decimal in
+  `[0, 1]`. Threshold is computed from the best hit in the result set:
+  `appliedThreshold = max_score - min_score_diff`. Drops any hit whose
+  score is below that. Useful when you don't know the absolute score
+  distribution in advance — "everything within 0.1 of the best match"
+  is often more meaningful than "everything above 0.7". Mutually
+  exclusive with `min_score` — passing both returns HTTP 400 / MCP
+  `isError`. When applied, response echoes `minScoreDiff`,
+  `appliedThreshold`, `maxScore`, and `candidatesBeforeFilter`.
+
 ## [0.2.0-beta.1] - 2026-07-04
 
 Two breaking changes in this release: leaner default `/search` response
