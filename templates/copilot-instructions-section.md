@@ -1,22 +1,32 @@
-## 1.1  Codebase Semantic Search (Local Tool)
+## 1.1  Codebase Semantic Search (Local MCP Tool)
 
-A local vector search engine indexes the full codebase (docs, wiki, src, server/src — whatever you configure in `.codesearchrc.json`).
-Use it for **conceptual/meaning-based** discovery when `grep_search` is too literal.
-**This is a required first step before creating any new file, component, hook, utility, type, route, or model.**
+A local vector search engine indexes the full codebase (docs, wiki, src,
+server/src — whatever you configure in `.codesearchrc.json`). **You talk to
+it through a stdio MCP server** — your agent runtime spawns the server on
+demand, you call it through tool calls, and you do **not** shell out to
+`curl` for routine queries. An HTTP API is also exposed for humans / curl
+debugging, but **always prefer the MCP tools**.
+
+This is a required first step before creating any new file, component,
+hook, utility, type, route, or model.
+
+### How you talk to this engine (four MCP tools)
+
+| Tool                    | What it returns                                                        |
+|-------------------------|------------------------------------------------------------------------|
+| `codebase_semantic_search` | Ranked code chunks matching a natural-language query                |
+| `codebase_clip`         | The full text of one or more chunks, by their short numeric `id`        |
+| `codebase_read_file`    | A raw file slice by line range (`sed -n 'A,Bp'` semantics)             |
+| `codebase_stats`        | Chunk count, collection name, embedding model — use it to confirm the indexer has caught up |
+
+Always **search first**, then drill in with `codebase_clip` (shortcut) or
+`codebase_read_file` (expanded context).
 
 ### Run a query
-
-Minimum viable call — just the query:
 
 ```text
 tool:   codebase_semantic_search
 input:  { "query": "<natural language>" }
-```
-
-```bash
-curl -s http://localhost:7700/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "<natural language>"}'
 ```
 
 Defaults applied: `top_k: 100` and `min_score_diff: 0.1` (drop anything more
@@ -32,10 +42,11 @@ then one fenced code block per hit followed by a plain-text caption line
 with the file path:line range, symbol name, score, and id. Code is the
 primary matter; metadata is the caption beneath it.
 
-Pass `format: "json"` if you need the structured response (programmatic
-extraction, downstream tooling that expects JSON). In MCP, the `format`
-arg is part of the tool schema; in HTTP, set `"format": "json"` in the
-request body.
+Pass `format: "json"` only when you need the structured response
+(programmatic extraction or downstream tooling that expects JSON). The
+lean per-hit fields are `id`, `filePath`, `symbolName`, `score`,
+`startLine`, `endLine`, `content`; the metadata fields are opt-in via
+`include`.
 
 Example markdown response:
 
@@ -99,20 +110,7 @@ of high-quality hits, pair the default `top_k: 100` with `min_score: 0.7` to
 ensure at least 5–10 qualifying results on a sizeable codebase.
 
 When set, the response echoes `minScore` and `candidatesBeforeFilter` so
-you can see how aggressive the filter was:
-
-```json
-{
-  "data": {
-    "query": "...",
-    "count": 6,
-    "topK": 10,
-    "minScore": 0.7,
-    "candidatesBeforeFilter": 10,
-    "results": [ ... ]
-  }
-}
-```
+you can see how aggressive the filter was.
 
 #### `min_score_diff` semantics (relative threshold)
 
@@ -122,30 +120,14 @@ when you don't know the absolute score distribution in advance — "show
 me everything within 0.1 of the best match" is often more meaningful
 than "show me everything above 0.7".
 
-Mutually exclusive with `min_score` — passing both returns HTTP 400 /
-MCP `isError`.
-
-When set, the response echoes `minScoreDiff`, `appliedThreshold`,
-`maxScore`, and `candidatesBeforeFilter`:
-
-```json
-{
-  "data": {
-    "query": "...",
-    "count": 4,
-    "topK": 10,
-    "minScoreDiff": 0.1,
-    "appliedThreshold": 0.7146,
-    "maxScore": 0.8146,
-    "candidatesBeforeFilter": 10,
-    "results": [ ... ]
-  }
-}
-```
+Mutually exclusive with `min_score` — passing both returns
+`isError: true` from the MCP tool. When set, the response echoes
+`minScoreDiff`, `appliedThreshold`, `maxScore`, and
+`candidatesBeforeFilter`.
 
 Recommended bands (relative `min_score_diff`):
 - **0.05–0.15** — strict; typically keeps 3–8 strong hits within that band
-  of the best match. Count depends on score distribution, not on `top_k`
+  of the best match. Count depends on score distribution, not `top_k`
   directly.
 - **0.2–0.3** — lenient; useful when the top match is strong but the
   semantic space drops off sharply below it.
@@ -162,24 +144,26 @@ Default response is **markdown** (see "Response format: markdown by default" abo
 
 ```json
 {
-  "success": true,
-  "data": {
-    "query": "...",
-    "count": 10,
-    "topK": 10,
-    "clipStoreSize": 142,
-    "results": [
-      {
-        "id": 42,
-        "filePath": "server/src/modules/billing/routes.ts",
-        "symbolName": "createInvoice",
-        "score": 0.842,
-        "startLine": 42,
-        "endLine": 80,
-        "content": "export async function createInvoice(req, res) { ... }"
-      }
-    ]
-  }
+  "query": "...",
+  "count": 10,
+  "topK": 10,
+  "filters": { "module": null, "language": "typescript", "chunkType": null },
+  "clipStoreSize": 142,
+  "results": [
+    {
+      "id": 42,
+      "filePath": "server/src/modules/billing/routes.ts",
+      "symbolName": "createInvoice",
+      "score": 0.842,
+      "startLine": 42,
+      "endLine": 80,
+      "content": "export async function createInvoice(req, res) { ... }"
+    }
+  ],
+  "minScoreDiff": 0.1,
+  "appliedThreshold": 0.742,
+  "maxScore": 0.842,
+  "candidatesBeforeFilter": 10
 }
 ```
 
@@ -187,21 +171,20 @@ Default response is **markdown** (see "Response format: markdown by default" abo
 
 | field                | meaning                                                                       |
 |----------------------|-------------------------------------------------------------------------------|
-| `id`                 | Short numeric handle. Pass to `codebase_clip` / `GET /clip/:id` for the text  |
+| `id`                 | Short numeric handle. Pass to `codebase_clip` to fetch the text                |
 | `score`              | 0..1 cosine similarity. ≥0.75 = strong match, 0.55–0.75 = worth reviewing, <0.55 = likely noise |
 | `filePath`           | Path relative to workspace root                                              |
 | `symbolName`         | Function/class/interface name when the chunk is a symbol; `null` otherwise    |
 | `startLine`/`endLine`| 1-indexed inclusive line range in `filePath`                                  |
 | `content`            | The chunk text itself — read THIS before opening the whole file              |
 
-`clipStoreSize` reports the current in-memory clip-store size (FIFO capped at 10K entries; cleared on server restart). When `min_score` is set, `minScore` + `candidatesBeforeFilter` are also in `data`. When `include` is set, the chosen fields are added to each result and `includedFields` is echoed in `data`.
+`clipStoreSize` reports the current in-memory clip-store size (FIFO capped at 10K entries; cleared on server restart). When `min_score` is set, `minScore` + `candidatesBeforeFilter` are also in the response. When `include` is set, the chosen fields are added to each result and `includedFields` is echoed at the top level.
 
 #### Opt-in metadata: `include`
 
 `chunkType`, `module`, `language` are **not in the default response** — they are useful as filter inputs but largely redundant in the response (you can read `module` from the first `/`-segment of `filePath`, and `language` from its extension; `chunkType` is usually obvious from `content`). Opt-in only when you actually need them:
 
 ```jsonc
-// MCP / HTTP
 {
   "query": "how invoices are created",
   "top_k": 10,
@@ -209,7 +192,7 @@ Default response is **markdown** (see "Response format: markdown by default" abo
 }
 ```
 
-Each hit then also carries those fields. Allowed values: `"chunkType"`, `"module"`, `"language"`. Unknown value → HTTP 400 / MCP `isError` with the allowed list.
+Each hit then also carries those fields. Allowed values: `"chunkType"`, `"module"`, `"language"`. Unknown value → `isError: true` with the allowed list.
 
 ### Two ways to fetch the full text of a chunk
 
@@ -218,68 +201,52 @@ Each hit then also carries those fields. Allowed values: `"chunkType"`, `"module
 You get the chunk back exactly as the search hit described it — no range fiddling.
 
 ```text
-// MCP — single
+// single
 tool:   codebase_clip
 input:  { "id": 42 }
 
-// MCP — batch (one tool call, many ids)
+// batch (one tool call, many ids)
 tool:   codebase_clip
 input:  { "ids": [42, 17, 99] }
 ```
 
-```bash
-# HTTP single — GET-friendly, easy to curl/test
-curl -s http://localhost:7700/clip/42
+**Response (single):** `{ id, filePath, startLine, endLine, totalLines, content }`.
 
-# HTTP batch small — GET with comma-separated ids
-curl -s 'http://localhost:7700/clips?ids=42,17,99'
+**Response (batch):** `{ results: [...], requested, succeeded, failed, clipStoreSize }`. Each result has `success: bool` — failures (id not found, file missing, file too large) do not abort the batch.
 
-# HTTP batch large — POST with JSON body (no query-string length concerns)
-curl -s -X POST http://localhost:7700/clips \
-  -H "Content-Type: application/json" \
-  -d '{"ids":[42,17,99,128,256]}'
-```
-
-**Response (single):** `{ success, data: { id, filePath, startLine, endLine, totalLines, content } }`.
-
-**Response (batch):** `{ success, data: { results: [...], requested, succeeded, failed, clipStoreSize } }`. Each result has `success: bool` — failures (id not found, file missing, file too large) do not abort the batch.
-
-**Ephemeral caveat:** ids live in an in-memory table (FIFO eviction at 10K entries). Server restart clears the table, and the oldest id may be evicted under load. If you get "id not found or expired", re-run the search.
+**Ephemeral caveat:** ids live in an in-memory table (FIFO eviction at 10K entries). MCP server restart clears the table, and the oldest id may be evicted under load. If you get "id not found or expired", re-run the search.
 
 #### B. Direct — fetch by file path + line range (use to expand context)
 
 When a hit is a fragment of a larger function and you want the surrounding lines (imports above, callers below, comments in between), use the raw `filePath` + line range. Adjust `startLine`/`endLine` to widen or narrow the window — e.g. `startLine - 10` / `endLine + 10`.
 
 ```text
-// MCP
 tool:   codebase_read_file
-input:  { "filePath": "server/src/modules/billing/routes.ts", "startLine": 38, "endLine": 95 }
-```
-
-```bash
-# HTTP
-curl -s -X POST http://localhost:7700/read \
-  -H "Content-Type: application/json" \
-  -d '{"filePath":"server/src/modules/billing/routes.ts","startLine":38,"endLine":95}'
+input:  {
+  "filePath": "server/src/modules/billing/routes.ts",
+  "startLine": 38,
+  "endLine": 95
+}
 ```
 
 **Returns:** `{ filePath, startLine, endLine, totalLines, rangeRequested, content }`.
 
-**Limits:** 500 lines per call (chain multiple reads to paginate). 25 MB file cap (HTTP 413 / MCP `isError: file too large`). Path safety: `filePath` is relative to the workspace root; absolute paths and `../` escapes are rejected.
+**Limits:** 500 lines per call (chain multiple reads to paginate). 25 MB file cap (returns `isError: file too large`). Path safety: `filePath` is relative to the workspace root; absolute paths and `../` escapes are rejected.
 
 #### Which to pick?
 
 | Situation | Use |
 |-----------|-----|
-| Want the chunk as the search returned it | `id` → `codebase_clip` / `/clip/:id` |
-| Need surrounding context (imports, callers, comments) | `codebase_read_file` / `/read` with adjusted range |
-| Want many chunks at once | `codebase_clip` with `ids` / `/clips` (GET or POST) |
+| Want the chunk as the search returned it | `codebase_clip` with the `id` |
+| Need surrounding context (imports, callers, comments) | `codebase_read_file` with adjusted range |
+| Want many chunks at once | `codebase_clip` with `ids` |
 
 ### Typical workflow
 
 ```text
-1. codebase_semantic_search(query="how invoices are created")          → results[]
-2. codebase_clip(ids=[r.id for r in results])                          → full text of each
+1. codebase_semantic_search(query="how invoices are created")   → results[] (each has an id)
+2a. codebase_clip(ids=[r.id for r in results])                  → full text of each
+2b. codebase_read_file(filePath=results[0].filePath, …)         → expand context around one
 3. Make your edit in the lines you've now seen in full
 ```
 
@@ -318,13 +285,112 @@ Good queries read like a one-sentence question to a teammate who's read the code
 - Understanding how a concept is implemented across the codebase
 - Finding relevant documentation sections
 
-### Prerequisites (one-time, set up by the user)
+### When this tool errors or returns empty
 
-- Node.js 20+
-- Docker with the Compose v2 plugin (`docker compose version`)
-- Ollama running locally on `http://127.0.0.1:11434`
-- `curl` on `$PATH`
+The local engine may be down. Surface the gap to the user instead of
+silently falling back to literal `grep_search`:
 
-If this tool errors, suggest the user run `npx codesearch doctor` to confirm
-all four are reachable. Do NOT silently fall back to literal grep — surface
-the gap so the user knows the engine needs attention.
+1. Run `codebase_stats` to confirm whether the indexer is up and how many
+   chunks are loaded.
+2. If the index is empty, the user needs to run `npx codesearch index --full`
+   (or `npx codesearch up` if the whole stack isn't bootstrapped yet).
+3. If `codebase_stats` errors with a Milvus/Ollama connectivity message,
+   suggest `npx codesearch doctor` — it prints one line per dep with the
+   fix command if anything fails.
+
+Do NOT silently fall back to `grep_search`. The user paid for semantic
+search; falling back without telling them hides a real defect in their
+setup.
+
+### Bootstrap (one-time, by the user — not by you)
+
+The MCP server reads from a Milvus collection that's built by the
+`codebase-semantic-search` CLI. **The user** runs these once per project;
+you cannot do them on their behalf because they need Docker, Ollama, and
+filesystem access:
+
+```bash
+# 1. Install as a dev dependency
+npm install --save-dev codebase-semantic-search
+
+# 2. Bootstrap the stack (Milvus + embedding model + initial index + watcher)
+#    — idempotent, blocks in the foreground, Ctrl+C to stop the dev loop
+npx codesearch up
+```
+
+`up` does, in order: writes `.codesearchrc.json` (idempotent) → starts the
+Milvus Docker stack (idempotent) → pulls the `nomic-embed-text` embedding
+model (idempotent) → runs an initial full reindex if the collection is
+empty → starts the file watcher (Ctrl+C stops the watcher; Milvus keeps
+running in the background).
+
+After `up` finishes, the user registers the MCP server with their agent
+runtime. **You do not need to do anything special** — your runtime spawns
+`npx -y codebase-semantic-search mcp` on demand over stdio when it sees
+the `mcpServers` / `servers` entry.
+
+#### Registering the MCP server (user, one-time)
+
+**Claude Code** (`~/.claude/mcp.json` or per-project `.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "codebase": {
+      "command": "npx",
+      "args": ["-y", "codebase-semantic-search", "mcp"]
+    }
+  }
+}
+```
+
+**GitHub Copilot Chat** (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "codebase-semantic-search": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "codebase-semantic-search", "mcp"]
+    }
+  }
+}
+```
+
+**OpenCode** (`opencode.json` or `~/.config/opencode/config.json`):
+```json
+{
+  "mcp": {
+    "codebase-semantic-search": {
+      "type": "local",
+      "command": ["npx", "-y", "codebase-semantic-search", "mcp"]
+    }
+  }
+}
+```
+
+### When MCP isn't available — HTTP fallback (humans / curl only)
+
+If your agent runtime cannot speak MCP (rare; e.g. raw curl debugging
+from a shell), the same index is also exposed as an HTTP API on
+`http://localhost:7700` by running `npx codesearch serve` (or
+`serve:watch` to also keep the index fresh). The endpoints mirror the MCP
+tools:
+
+```bash
+# Search
+curl -s http://localhost:7700/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": "<natural language>"}'
+
+# Fetch a chunk by id
+curl -s http://localhost:7700/clip/42
+
+# Read a file slice
+curl -s -X POST http://localhost:7700/read \
+  -H "Content-Type: application/json" \
+  -d '{"filePath":"src/auth/login.ts","startLine":38,"endLine":95}'
+```
+
+Always prefer the MCP tools — they don't need a long-running server, they
+respect your agent's process boundaries, and they survive multi-project
+setups without port collisions.

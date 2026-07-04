@@ -1,22 +1,98 @@
 # codebase-semantic-search
 
-A local, project-agnostic semantic search engine for any codebase. Drop it
-into a project, point it at your source dirs, and any agent (Claude Code,
-GitHub Copilot Chat, OpenCode, Codex) or human can query it by meaning rather
-than by literal text match.
+A local, project-agnostic **semantic search engine** for any codebase. Drop
+it into a project, point it at your source dirs, and any agent (Claude
+Code, GitHub Copilot Chat, OpenCode, Codex) or human can query it by
+meaning rather than by literal text match.
 
 - **Vector DB:** Milvus Standalone (Docker)
 - **Embeddings:** Ollama `nomic-embed-text` (768-dim, local, fast)
 - **Chunker:** AST-aware for TS/JS, heading-based for markdown, sliding window for the rest
-- **Interfaces:** stdio MCP server (for agents) + HTTP API (for humans)
+- **Interfaces:** stdio **MCP server** (for agents, **preferred**) + HTTP API (for humans / curl debugging)
 - **Live updates:** chokidar file watcher with debounced incremental reindex
+
+> **TL;DR for agents.** Install the package, run `npx codesearch up` once,
+> then register the stdio MCP server with your agent runtime. The agent
+> gets four tools — `codebase_semantic_search`, `codebase_clip`,
+> `codebase_read_file`, `codebase_stats` — and queries them as part of its
+> normal tool calls. The HTTP API is a fallback for humans only; agents
+> should not shell out to `curl`.
+
+## Quickstart
+
+```bash
+# 1. Install as a dev dep
+npm install --save-dev codebase-semantic-search
+
+# 2. Bootstrap the engine (writes config + starts Milvus + pulls the
+#    embedding model + runs an initial reindex if empty + starts the
+#    file watcher). Idempotent. Blocks in the foreground.
+npx codesearch up
+```
+
+Then **register the MCP server with your agent runtime** (one-time per
+machine):
+
+**Claude Code** (`~/.claude/mcp.json` or per-project `.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "codebase": {
+      "command": "npx",
+      "args": ["-y", "codebase-semantic-search", "mcp"]
+    }
+  }
+}
+```
+
+**GitHub Copilot Chat** (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "codebase-semantic-search": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "codebase-semantic-search", "mcp"]
+    }
+  }
+}
+```
+
+**OpenCode** (`opencode.json`):
+```json
+{
+  "mcp": {
+    "codebase-semantic-search": {
+      "type": "local",
+      "command": ["npx", "-y", "codebase-semantic-search", "mcp"]
+    }
+  }
+}
+```
+
+Your agent runtime spawns the MCP server on demand over stdio whenever it
+needs to query the index. **You do not need to run `codesearch mcp`
+yourself** — that's the agent's job. (See "How it fits together" below.)
+
+After registration, the agent has four new tools:
+
+| Tool                       | Returns                                                          |
+|----------------------------|------------------------------------------------------------------|
+| `codebase_semantic_search` | Ranked code chunks matching a natural-language query             |
+| `codebase_clip`            | Full text of a chunk by its short numeric `id` (single or batch) |
+| `codebase_read_file`       | File slice by line range (`sed -n 'A,Bp'` semantics)             |
+| `codebase_stats`           | Chunk count, collection name, embedding model                    |
+
+> **If `up` fails on first run,** it's almost always a missing dep. Run
+> `npx codesearch doctor` and follow the fix it prints — usually "Ollama
+> not running" or "Docker compose stack not up."
 
 ## Requirements
 
-`codesearch up` shells out to three external things on your machine: Docker,
-Ollama, and `curl`. They must already be installed and reachable **before**
-you run `up`. The package itself is pure-JS and installs cleanly via npm on
-any platform Node 20+ runs on.
+`codesearch up` shells out to three external things on your machine:
+Docker, Ollama, and `curl`. They must already be installed and reachable
+**before** you run `up`. The package itself is pure-JS and installs
+cleanly via npm on any platform Node 20+ runs on.
 
 | Need | Why | Where |
 |---|---|---|
@@ -71,13 +147,34 @@ If you'd rather pin the platform yourself (e.g. for CI on a mixed-architecture
 runner), set `UNAME_M=linux/amd64` (or `linux/arm64`) in the shell before
 running `codesearch up` and the bundled compose will respect it.
 
-## Architecture
+## How it fits together
+
+The CLI brings up three runtime components — Milvus, Ollama, the file
+watcher — and **two query surfaces** sit on top:
+
+- **MCP stdio server** (preferred for agents). The agent runtime spawns
+  `npx -y codebase-semantic-search mcp` as a child process and talks to it
+  over JSON-RPC. No port, no daemon — the server starts on demand when the
+  agent makes its first tool call and exits when the agent quits. Each MCP
+  process has its own in-memory clip store (the short numeric ids assigned
+  by `codebase_semantic_search` are valid for the lifetime of that
+  process only).
+- **HTTP API** (fallback for humans / curl debugging). Run
+  `npx codesearch serve` (just HTTP) or `npx codesearch serve:watch` (HTTP
+  + file watcher). Listens on `http://localhost:7700`. Use this when an
+  agent runtime can't speak MCP, or when you want to poke at the index
+  with curl / Postman / a browser.
+
+Both query surfaces read the same Milvus collection, so results are
+consistent across them. Agents should always prefer the MCP tools — no
+port collisions in multi-project setups, no long-running server to manage,
+clean process boundaries.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │             Agent (Claude Code, Copilot, …)             │
 └────────────────────────┬────────────────────────────────┘
-                         │  stdio MCP / HTTP POST /search, /read, /clip/:id, /clips
+                         │  stdio MCP (preferred) / HTTP fallback
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │              codesearch (Node.js, TypeScript)            │
@@ -102,23 +199,87 @@ running `codesearch up` and the bundled compose will respect it.
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Quickstart
+## MCP Server
 
-```bash
-# 1. Install as a dev dep
-npm install --save-dev codebase-semantic-search
+Spawns a stdio MCP server exposing four tools:
 
-# 2. Confirm the runtime deps (Docker, Ollama, curl) — see "Requirements" above
-#    if any check fails. This is one-time; re-running `up` is still idempotent.
-npx codesearch doctor
+- `codebase_semantic_search` — query the index by meaning. Args:
+  `query` (natural language), `top_k` (1–100, default 100), `module`,
+  `language`, `chunk_type`, `min_score` (absolute quality threshold,
+  0..1), `min_score_diff` (relative quality threshold, 0..1, **default
+  0.1**, mutually exclusive with `min_score`), `include` (opt-in
+  metadata fields to add to each result), `format` (response format:
+  `"markdown"` default or `"json"` opt-in). **Default response is a
+  single markdown document** with a `# Search: "..."` title and per-hit
+  code fences + metadata captions. Pass `format: "json"` for the
+  structured response. When `format: "json"`, default per-hit fields are
+  `id`, `filePath`, `symbolName`, `score`, `startLine`, `endLine`,
+  `content` (lean); pass `include: ["chunkType", "module", "language"]`
+  to opt in to the metadata fields. The response always echoes whichever
+  quality filter was applied (default or explicit) so callers can see
+  the threshold and `maxScore`. When `include` is set, response also
+  includes `includedFields`.
+- `codebase_clip` — fetch a clip by its short numeric id from the
+  in-memory store. Args: EITHER `id: number` (single) OR `ids: number[]`
+  (batch). Ids are assigned by `codebase_semantic_search` and are valid
+  for the lifetime of this MCP process (FIFO evict at 10K entries;
+  cleared on restart).
+- `codebase_read_file` — fetch a slice of a file by line range
+  (`sed -n '<start>,<end>p'` semantics). Args: `filePath` (relative to
+  workspace root), `startLine` (1-indexed inclusive), `endLine`
+  (1-indexed inclusive). 500 lines per call, 25 MB file cap. Use it to
+  expand the context around a hit returned by `codebase_semantic_search`
+  without re-loading the whole file.
+- `codebase_stats` — chunk count, collection name, embedding model, embedding dimensions.
 
-# 3. One-shot bootstrap: init + start Milvus + pull model + initial reindex + start dev loop
-npx codesearch up
+Typical workflow:
+
+```text
+1. codebase_semantic_search(query="how invoices are created")          → results[] (each has an id)
+2a. codebase_clip(ids=[r.id for r in results])                        → full text of each
+2b. codebase_read_file(filePath=results[0].filePath, startLine=…, endLine=…)  // expand context around one
+3. make your edit in the lines you've now seen in full
 ```
 
-That's it. `up` is idempotent — re-running it skips anything that's already set up. It blocks in the foreground running the HTTP server + file watcher; Ctrl+C to stop the dev loop (Milvus keeps running). To stop Milvus too, run `npx codesearch down`.
+### MCP agent templates
 
-> **If `up` fails on first run,** it's almost always a missing dep. Run `npx codesearch doctor` and follow the fix it prints — usually it's "Ollama not running" or "Docker compose stack not up."
+`npx codesearch init` (or `up`, if no config exists yet) writes MCP
+instructions into your project's agent files:
+
+- A `## Semantic Search (always run first)` block into every
+  `.github/agents/*.agent.md` (marker-bounded so re-runs are idempotent).
+- A `## 1.1 Codebase Semantic Search (Local MCP Tool)` section in
+  `.github/copilot-instructions.md` (created if missing).
+
+These blocks tell your agent the exact tool names, defaults, response
+shapes, and workflow — they are the recommended source of truth for
+agents, not this README.
+
+## CLI
+
+| Command | What it does |
+|---|---|
+| `codesearch init` | Scaffold `.codesearchrc.json` + agent file snippets + docker-compose |
+| `codesearch init --port=19531` | Same, with a Milvus port offset for running multiple codebases in parallel |
+| `codesearch init --search-port=7800` | Same, with a custom HTTP API port |
+| `codesearch up` | One-shot bootstrap: init (if needed) → Milvus → Ollama model → index (if empty) → dev loop. Idempotent. |
+| `codesearch up --port=19531` | Same, with a Milvus port offset |
+| `codesearch up --no-index` | Same, but skip the initial reindex |
+| `codesearch up --no-serve` | Same, but stop after bootstrap (no dev loop) |
+| `codesearch down` | Stop Milvus (volumes preserved — index survives) |
+| `codesearch doctor` | Check Ollama, Milvus, embedding model availability |
+| `codesearch index` | Reindex the codebase (incremental by default) |
+| `codesearch index --full` | Drop the collection and rebuild from scratch |
+| `codesearch index --dry-run` | Show what would change without writing |
+| `codesearch serve` | HTTP search server on `:7700` (humans / curl fallback) |
+| `codesearch watch` | File watcher only (no HTTP) |
+| `codesearch serve:watch` | HTTP server + watcher in one process |
+| `codesearch mcp` | stdio MCP server (spawned automatically by agent runtimes; rarely run manually) |
+| `codesearch status` | Show collection stats and current config |
+
+All config is overridable via `.codesearchrc.json` or env vars
+(`OLLAMA_HOST`, `MILVUS_HOST`, `MILVUS_PORT`, `EMBEDDING_MODEL`,
+`SEARCH_PORT`).
 
 ### The underlying subcommands
 
@@ -129,10 +290,10 @@ npx codesearch init         # Scaffold .codesearchrc.json + agent file snippets 
 npx codesearch doctor       # Check Ollama, Milvus, embedding model
 npx codesearch index        # Reindex the codebase (incremental by default)
 npx codesearch index --full # Drop the collection and rebuild from scratch
-npx codesearch serve        # HTTP search server on :7700
+npx codesearch serve        # HTTP search server on :7700 (fallback for humans)
 npx codesearch watch        # File watcher only (no HTTP)
 npx codesearch serve:watch  # HTTP server + watcher in one process
-npx codesearch mcp          # stdio MCP server (for agents that speak MCP)
+npx codesearch mcp          # stdio MCP server (spawned automatically by agent runtimes)
 npx codesearch status       # Show collection stats and current config
 npx codesearch up           # One-shot bootstrap (init + Milvus + index + dev loop)
 npx codesearch down         # Stop Milvus (volumes preserved — index survives)
@@ -142,7 +303,7 @@ The `init` command drops:
 - `.codesearchrc.json` — project-specific config
 - `docker-compose.search.yml` — Milvus + etcd + MinIO
 - A `## Semantic Search (always run first)` block appended to every `.github/agents/*.agent.md` (with marker comments so re-runs are idempotent)
-- A `## 1.1 Codebase Semantic Search` section in `.github/copilot-instructions.md` (created if missing)
+- A `## 1.1 Codebase Semantic Search (Local MCP Tool)` section in `.github/copilot-instructions.md` (created if missing)
 
 ### Running multiple codebases in parallel
 
@@ -158,35 +319,15 @@ npx codesearch up --port=19531 --search-port=7800
 
 `up` forwards the offset to `init` (if `.codesearchrc.json` is missing) and sets the matching env vars on the `docker compose` invocation. Each project gets its own Milvus data volume (`<project>_milvus_data`), so indexes don't share or overwrite.
 
-## CLI
+For MCP-only setups (no HTTP server running), multi-project is trivially
+isolated — each agent runtime spawns its own MCP child process per
+project, with no port to share at all.
 
-| Command | What it does |
-|---|---|
-| `codesearch init` | Scaffold config + agent file snippets + docker-compose |
-| `codesearch init --port=19531` | Same, with a Milvus port offset for running multiple codebases in parallel |
-| `codesearch init --search-port=7800` | Same, with a custom HTTP API port |
-| `codesearch up` | One-shot bootstrap: init (if needed) → Milvus → Ollama model → index (if empty) → dev loop. Idempotent. |
-| `codesearch up --port=19531` | Same, with a Milvus port offset |
-| `codesearch up --no-index` | Same, but skip the initial reindex |
-| `codesearch up --no-serve` | Same, but stop after bootstrap (no dev loop) |
-| `codesearch down` | Stop Milvus (volumes preserved — index survives) |
-| `codesearch doctor` | Check Ollama, Milvus, embedding model availability |
-| `codesearch index` | Reindex the codebase (incremental by default) |
-| `codesearch index --full` | Drop the collection and rebuild from scratch |
-| `codesearch index --dry-run` | Show what would change without writing |
-| `codesearch serve` | HTTP search server on `:7700` |
-| `codesearch watch` | File watcher only (no HTTP) |
-| `codesearch serve:watch` | HTTP server + watcher in one process |
-| `codesearch mcp` | stdio MCP server |
-| `codesearch status` | Show collection stats and current config |
-
-All config is overridable via `.codesearchrc.json` or env vars
-(`OLLAMA_HOST`, `MILVUS_HOST`, `MILVUS_PORT`, `EMBEDDING_MODEL`,
-`SEARCH_PORT`).
-
-## HTTP API
+## HTTP API (humans / curl fallback)
 
 Base URL: `http://localhost:7700` (port overridable via `SEARCH_PORT`).
+The HTTP API exposes the same data as the MCP server; it's intended for
+humans debugging with curl / Postman, or for tools that can't speak MCP.
 
 ### `POST /search` — semantic search by meaning
 
@@ -409,8 +550,8 @@ GET /clip/42
 Returns: `{ success, data: { id, filePath, startLine, endLine, totalLines, content } }`.
 
 The id is assigned by `/search`. The underlying `(filePath, startLine,
-endLine)` is stored in an in-memory table keyed by id. Use this when you
-want the chunk back exactly as the search returned it.
+endLine)` is stored in an in-memory table keyed by id. Use this when
+you want the chunk back exactly as the search returned it.
 
 ### `GET /clips?ids=1,2,3` — batch fetch (small batches, curl-friendly)
 
@@ -517,75 +658,6 @@ curl -s -X POST http://localhost:7700/read -H "Content-Type: application/json" \
 
 `GET /health` — liveness check. `GET /stats` — collection stats (chunk count, etc.).
 
-## MCP Server
-
-Spawns a stdio MCP server exposing four tools:
-
-- `codebase_semantic_search` — query the index by meaning. Args:
-  `query` (natural language), `top_k` (1–100, default 100), `module`,
-  `language`, `chunk_type`, `min_score` (absolute quality threshold,
-  0..1), `min_score_diff` (relative quality threshold, 0..1, **default
-  0.1**, mutually exclusive with `min_score`), `include` (opt-in
-  metadata fields to add to each result), `format` (response format:
-  `"markdown"` default or `"json"` opt-in). **Default response is a
-  single markdown document** with a `# Search: "..."` title and per-hit
-  code fences + metadata captions. Pass `format: "json"` for the
-  structured response. When `format: "json"`, default per-hit fields are
-  `id`, `filePath`, `symbolName`, `score`, `startLine`, `endLine`,
-  `content` (lean); pass `include: ["chunkType", "module", "language"]`
-  to opt in to the metadata fields. The response always echoes whichever
-  quality filter was applied (default or explicit) so callers can see
-  the threshold and `maxScore`. When `include` is set, response also
-  includes `includedFields`.
-- `codebase_clip` — fetch a clip by its short numeric id from the
-  in-memory store. Args: EITHER `id: number` (single) OR `ids: number[]`
-  (batch). Ids are assigned by `codebase_semantic_search` and are valid
-  for the lifetime of this MCP process (FIFO evict at 10K entries;
-  cleared on restart).
-- `codebase_read_file` — fetch a slice of a file by line range
-  (`sed -n '<start>,<end>p'` semantics). Args: `filePath` (relative to
-  workspace root), `startLine` (1-indexed inclusive), `endLine`
-  (1-indexed inclusive). 500 lines per call, 25 MB file cap. Use it to
-  expand the context around a hit returned by `codebase_semantic_search`
-  without re-loading the whole file.
-- `codebase_stats` — chunk count, collection name, embedding model, embedding dimensions.
-
-Typical workflow:
-
-```text
-1. codebase_semantic_search(query="how invoices are created")          → results[] (each has an id)
-2a. codebase_clip(ids=[r.id for r in results])                        → full text of each
-2b. codebase_read_file(filePath=results[0].filePath, startLine=…, endLine=…)  // expand context around one
-3. make your edit in the lines you've now seen in full
-```
-
-Register it with your agent runtime:
-
-**Claude Code** (`~/.claude/mcp.json` or per-project `.mcp.json`):
-```json
-{
-  "mcpServers": {
-    "codebase": {
-      "command": "npx",
-      "args": ["-y", "codebase-semantic-search", "mcp"]
-    }
-  }
-}
-```
-
-**GitHub Copilot Chat** (`.vscode/mcp.json`):
-```json
-{
-  "servers": {
-    "codebase-semantic-search": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "codebase-semantic-search", "mcp"]
-    }
-  }
-}
-```
-
 ## Project Layout
 
 ```
@@ -599,9 +671,9 @@ codebase-semantic-search/
 │   ├── chunker.ts           # AST-aware chunker (ts-morph)
 │   ├── embedder.ts          # Ollama client
 │   ├── milvus.ts            # Milvus client (create/upsert/search/delete)
-│   ├── search-server.ts     # Express HTTP API
+│   ├── search-server.ts     # Express HTTP API (humans / curl fallback)
 │   ├── watcher.ts           # Chokidar file watcher
-│   ├── mcp-server.ts        # stdio MCP server
+│   ├── mcp-server.ts        # stdio MCP server (preferred for agents)
 │   ├── indexer.ts           # reindex library (used by index + watch)
 │   ├── clip-store.ts        # in-memory store of clip refs (FIFO evict)
 │   ├── read-clip.ts         # shared file-slice helper (path safety, caps)
@@ -609,14 +681,14 @@ codebase-semantic-search/
 │       ├── init.ts          # scaffold config + agent files + docker-compose
 │       ├── doctor.ts        # prereq check
 │       ├── index.ts         # reindex (full or incremental)
-│       ├── serve.ts         # HTTP server
+│       ├── serve.ts         # HTTP server (fallback for humans)
 │       ├── watch.ts         # file watcher
 │       ├── serve-and-watch.ts
 │       ├── mcp.ts           # stdio MCP server
 │       ├── up.ts            # one-shot bootstrap (init + Milvus + index + dev loop)
 │       ├── down.ts          # stop Milvus (volumes preserved)
 │       └── status.ts        # config + stats
-└── templates/               # bundled init templates
+└── templates/               # bundled init templates (written into your project)
     ├── codesearchrc.json
     ├── copilot-instructions-section.md
     └── agent-semantic-search-section.md

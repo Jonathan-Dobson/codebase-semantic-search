@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Docs and agent templates rewritten to lead with MCP**, treating HTTP
+  as a fallback for humans / curl debugging. Previously the README and
+  embedded agent snippets put HTTP and MCP on equal footing, with curl
+  examples interspersed throughout — this made it look like agents should
+  shell out to curl for routine queries, when in fact MCP is the right
+  surface for every agent runtime that supports it.
+
+  - **README.md**: TL;DR at the top now reads "Install + `npx codesearch
+    up` + register MCP with agent runtime". The "How it fits together"
+    section explicitly labels MCP stdio as **preferred** and HTTP as the
+    **fallback**. Agent-runtime registration snippets (Claude Code,
+    GitHub Copilot Chat, OpenCode) are now in the Quickstart, not buried
+    at the end of the MCP section. HTTP API moved below the MCP section
+    and clearly labeled "humans / curl fallback". Added an explicit note
+    that MCP users don't need to run `codesearch mcp` themselves — the
+    agent runtime spawns it on demand.
+  - **`templates/agent-semantic-search-section.md`** (written into
+    `.github/agents/*.agent.md` by `init`): the primary "Run a query"
+    block now shows only the MCP tool call; curl is moved to a clearly
+    labeled "When MCP isn't available — HTTP fallback" appendix. Added
+    a "Bootstrap (one-time, by the user — not by you)" section that
+    tells the agent exactly what its human needs to do (`npm install`,
+    `npx codesearch up`, register the MCP server). Added an "When this
+    tool errors or returns empty" recovery flow that directs the agent to
+    run `codebase_stats` and surface `codesearch doctor` to the user
+    instead of silently falling back to `grep_search`.
+  - **`templates/copilot-instructions-section.md`** (written into
+    `.github/copilot-instructions.md` by `init`): same MCP-first
+    restructure as the agent template, plus the agent-runtime
+    registration snippets (Claude Code / Copilot / OpenCode) inline so
+    the human running `init` can copy-paste from their own agent file.
+  - **`src/commands/init.ts`** "Next steps" output: leads with
+    `npx codesearch up` as the recommended path. The previous manual
+    sequence (`docker compose up` → `ollama pull` → `index --full` →
+    `serve:watch`) is now labeled "Manual steps (only if `up` is not the
+    right entry point)". A new "Talking to the index from agents
+    (recommended path)" block prints the Claude Code / Copilot
+    registration snippets directly to the terminal so the user has them
+    in hand before they leave `init`.
+
 ## [0.2.1] - 2026-07-04
 
 ### Fixed

@@ -200,6 +200,19 @@ export async function initCommand(opts: InitOptions): Promise<void> {
 
   console.log('\n=== Next steps ===');
 
+  console.log(
+    '`init` only writes config + agent snippets. To bring up the full\n' +
+      'engine (Milvus + embedding model + initial index + dev loop) run:\n',
+  );
+  console.log('   npx codesearch up');
+  console.log(
+    '\n`up` is idempotent — it does, in order: scaffolds .codesearchrc.json\n' +
+      'if missing → starts Milvus (Docker) → pulls nomic-embed-text via\n' +
+      'Ollama → runs an initial full reindex if the collection is empty →\n' +
+      'starts the file watcher. Ctrl+C stops the watcher; Milvus keeps\n' +
+      'running. To stop Milvus too: `npx codesearch down`.\n',
+  );
+
   // Build the docker compose command. If the user overrode the port, we
   // need to set the env vars so the host-side port mappings line up with
   // the values in .codesearchrc.json.
@@ -210,24 +223,49 @@ export async function initCommand(opts: InitOptions): Promise<void> {
     composeEnvVars.push(`MINIO_API_PORT=${effectiveMinioApiPort}`);
     composeEnvVars.push(`MINIO_CONSOLE_PORT=${effectiveMinioConsolePort}`);
   }
+
+  console.log('--- Manual steps (only if `up` is not the right entry point) ---');
+  console.log('a. Start the vector DB:');
   const composeCmd =
     (composeEnvVars.length ? composeEnvVars.join(' ') + ' ' : '') +
     'docker compose -f docker-compose.search.yml up -d';
-
-  console.log('1. Start the vector DB:');
   console.log(`   ${composeCmd}`);
   if (composeEnvVars.length) {
     console.log(
       `   (the env vars shift the host-side port mappings so multiple projects can coexist)`,
     );
   }
-  console.log('2. Make sure Ollama is running and the embedding model is pulled:');
+  console.log('b. Make sure Ollama is running and the embedding model is pulled:');
   console.log('   ollama pull nomic-embed-text');
-  console.log('3. Bootstrap the index:');
-  console.log('   codesearch index --full');
-  console.log('4. Start the dev loop (HTTP API + file watcher):');
-  console.log('   codesearch serve:watch');
-  console.log('5. Or run the MCP server for agents that speak MCP:');
-  console.log('   codesearch mcp');
+  console.log('c. Bootstrap the index:');
+  console.log('   npx codesearch index --full');
+  console.log('d. Start the dev loop (HTTP API + file watcher):');
+  console.log('   npx codesearch serve:watch');
+  console.log();
+
+  console.log('--- Talking to the index from agents (recommended path) ---');
+  console.log(
+    'Agent runtimes (Claude Code, GitHub Copilot Chat, OpenCode, Codex)\n' +
+      'spawn the MCP server on demand over stdio — you do NOT need to\n' +
+      'start it manually. Register it once with your agent runtime:\n',
+  );
+  console.log('  Claude Code  (~/.claude/mcp.json or .mcp.json):');
+  console.log('    { "mcpServers": { "codebase": { "command": "npx",');
+  console.log('        "args": ["-y", "codebase-semantic-search", "mcp"] } } }');
+  console.log('  GitHub Copilot Chat  (.vscode/mcp.json):');
+  console.log('    { "servers": { "codebase-semantic-search": { "type": "stdio",');
+  console.log('        "command": "npx",');
+  console.log('        "args": ["-y", "codebase-semantic-search", "mcp"] } } }');
+  console.log();
+  console.log(
+    'After registration, the four MCP tools (codebase_semantic_search,\n' +
+      'codebase_clip, codebase_read_file, codebase_stats) become available\n' +
+      'to your agent — they query the same index that `up` set up.\n',
+  );
+  console.log(
+    'For humans / curl debugging only, run `npx codesearch serve` (HTTP\n' +
+      'on :7700) or `npx codesearch serve:watch` to also keep the index\n' +
+      'fresh. See the README for endpoint details.',
+  );
   console.log(`\nTemplates bundled in: ${TEMPLATES_DIR}`);
 }
