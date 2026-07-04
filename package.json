@@ -44,6 +44,7 @@
   "bugs": {
     "url": "https://github.com/Jonathan-Dobson/codebase-semantic-search/issues"
   },
+  "readme": "README.md",
   "publishConfig": {
     "provenance": true
   },
