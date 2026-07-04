@@ -114,7 +114,7 @@ export function createApp(): Express {
         return;
       }
 
-      const topK = Math.min(Math.max(1, Number(top_k) || 30), 50);
+      const topK = Math.min(Math.max(1, Number(top_k) || 100), 100);
 
       // Parse response format. Default = markdown. JSON is opt-in for
       // programmatic extraction. Unknown value or wrong type = 400.

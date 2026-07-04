@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Default `top_k` bumped from 30 to 100** on `/search` and
+  `codebase_semantic_search`. Returns more candidates before the
+  relative filter (`min_score_diff: 0.1`) drops low-relevance hits.
+  Max cap raised from 50 to 100 to match. To request fewer results,
+  set `top_k` explicitly. Also fixes a stale `Default 10, max 50`
+  in the MCP tool's `top_k` description (the runtime default was
+  already 30).
+
 ## [0.2.0-beta.3] - 2026-07-04
 
 ### Changed

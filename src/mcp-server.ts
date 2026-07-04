@@ -51,10 +51,10 @@ server.tool(
       .number()
       .int()
       .min(1)
-      .max(50)
-      .default(30)
+      .max(100)
+      .default(100)
       .optional()
-      .describe('Number of results to return. Default 10, max 50.'),
+      .describe('Number of results to return. Default 100, max 100.'),
     module: z
       .string()
       .optional()
@@ -128,7 +128,7 @@ server.tool(
         };
       }
 
-      const topK = top_k ?? 30;
+      const topK = top_k ?? 100;
       const queryEmbedding = await embedQuery(query);
       const rawResults = await searchChunks(queryEmbedding, topK, {
         module,

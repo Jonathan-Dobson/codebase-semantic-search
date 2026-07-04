@@ -19,7 +19,7 @@ curl -s http://localhost:7700/search \
   -d '{"query": "<natural language>"}'
 ```
 
-Defaults applied: `top_k: 30` and `min_score_diff: 0.1` (drop anything more
+Defaults applied: `top_k: 100` and `min_score_diff: 0.1` (drop anything more
 than 10% below the best match). To override or add filters, see "Optional
 filters" below.
 
@@ -69,7 +69,7 @@ src/transactions/clawback.ts:18-38 • ClawbackTx • score: 0.7353 • id: 2
 
 | filter            | matches against                                | default  | examples                                          |
 |-------------------|------------------------------------------------|----------|---------------------------------------------------|
-| `top_k`           | number of candidates requested from Milvus     | `30`     | `5` for "give me the top 5"                       |
+| `top_k`           | number of candidates requested from Milvus     | `100`    | `5` for "give me the top 5"                       |
 | `module`          | first path segment under the workspace root    | —        | `src`, `server/src/modules/billing`, `docs`       |
 | `language`        | file language                                  | —        | `typescript`, `tsx`, `javascript`, `markdown`, `json`, `yaml`, `terraform`, `python` |
 | `chunk_type`      | AST node type (TS/JS) or section kind (md)     | —        | `function`, `class`, `interface`, `section`, `block` |
@@ -95,8 +95,8 @@ Combine with `query` to narrow fast. Example — find the TypeScript function th
 Quality filter applied **after** the vector search: the engine asks Milvus
 for `top_k` candidates, then drops anything below `min_score`. So you may
 get back fewer than `top_k` results. If you need a guaranteed minimum count
-of high-quality hits, bump `top_k` (e.g. `top_k: 30, min_score: 0.7` to
-ensure at least 5–10 qualifying results on a sizeable codebase).
+of high-quality hits, pair the default `top_k: 100` with `min_score: 0.7` to
+ensure at least 5–10 qualifying results on a sizeable codebase.
 
 When set, the response echoes `minScore` and `candidatesBeforeFilter` so
 you can see how aggressive the filter was:

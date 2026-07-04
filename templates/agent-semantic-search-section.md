@@ -17,10 +17,10 @@ curl -s http://localhost:7700/search -H "Content-Type: application/json" \
   -d '{"query": "<natural language>"}'
 ```
 
-Defaults applied: `top_k: 30` and `min_score_diff: 0.1` (drop anything more
+Defaults applied: `top_k: 100` and `min_score_diff: 0.1` (drop anything more
 than 10% below the best match). To override or add filters:
 
-**Optional filters**: `top_k` (1–50, default 30), `module`, `language`,
+**Optional filters**: `top_k` (1–100, default 100), `module`, `language`,
 `chunk_type`, `min_score` (absolute 0..1 threshold), `min_score_diff`
 (0..1 relative threshold — default 0.1; drops hits more than this far
 below the best hit). `min_score` and `min_score_diff` are mutually
