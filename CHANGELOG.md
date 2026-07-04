@@ -7,12 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.3] - 2026-07-04
+
 ### Changed
 - **Default `top_k` bumped from 10 to 30** on `/search` and
   `codebase_semantic_search`. Returns more candidates before the
   relative filter (`min_score_diff: 0.1`) drops low-relevance hits.
   Max cap unchanged at 50. To request fewer results, set `top_k`
-  explicitly.
+  explicitly. Also fixes a latent bug where a stale `top_k = 10`
+  default in the request body destructuring was overriding the
+  handler's own default fallback.
 
 ## [0.2.0-beta.2] - 2026-07-04
 
