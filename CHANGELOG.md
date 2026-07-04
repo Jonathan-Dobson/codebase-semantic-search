@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.4] - 2026-07-04
+
 ### Changed
 - **Default `top_k` bumped from 30 to 100** on `/search` and
   `codebase_semantic_search`. Returns more candidates before the
