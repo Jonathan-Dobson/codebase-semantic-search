@@ -24,6 +24,7 @@ import { ensureCollection, searchChunks, getCollectionStats } from './milvus.js'
 import { CONFIG } from './config.js';
 import { putClip, getClip, clipStoreSize } from './clip-store.js';
 import { readFileSlice } from './read-clip.js';
+import { renderSearchMarkdown, type MarkdownHit } from './render-search.js';
 
 const server = new McpServer({
   name: CONFIG.mcpServerName,
@@ -79,8 +80,15 @@ server.tool(
       .describe(
         'Opt-in to include these metadata fields on each result. Default response omits chunkType, module, language — they are useful as filter inputs (chunk_type, module, language above) but largely redundant as response fields (derivable from filePath and content).',
       ),
+    format: z
+      .enum(['markdown', 'json'])
+      .optional()
+      .default('markdown')
+      .describe(
+        'Response format. Default "markdown" — single document with a "# Search: ..." title, per-hit code fence, and metadata caption. Pass "json" for the structured lean response with `include` opt-in fields.',
+      ),
   },
-  async ({ query, top_k, module, language, chunk_type, min_score, include }) => {
+  async ({ query, top_k, module, language, chunk_type, min_score, include, format }) => {
     try {
       const topK = top_k ?? 10;
       const queryEmbedding = await embedQuery(query);
@@ -99,28 +107,69 @@ server.tool(
 
       // Register each surviving hit in the in-memory clip store so callers
       // can fetch the full text by short numeric id via codebase_clip.
-      // Dedup is keyed on (filePath, startLine, endLine). Build lean
-      // result objects by default; only add chunkType / module / language
-      // when explicitly requested via `include`.
+      // Dedup is keyed on (filePath, startLine, endLine).
+      const hitsWithIds = filtered.map((r) => ({
+        id: putClip(r.filePath, r.startLine, r.endLine),
+        filePath: r.filePath,
+        symbolName: r.symbolName,
+        chunkType: r.chunkType,
+        module: r.module,
+        language: r.language,
+        startLine: r.startLine,
+        endLine: r.endLine,
+        score: r.score,
+        content: r.content,
+      }));
+
+      if (format === 'markdown') {
+        const mdHits: MarkdownHit[] = hitsWithIds.map((h) => ({
+          id: h.id,
+          filePath: h.filePath,
+          symbolName: h.symbolName,
+          score: Number(h.score.toFixed(4)),
+          startLine: h.startLine,
+          endLine: h.endLine,
+          content: h.content,
+          language: h.language,
+          chunkType: includedFields.has('chunkType') ? h.chunkType : undefined,
+          module: includedFields.has('module') ? h.module : undefined,
+        }));
+        const includedArr =
+          includedFields.size > 0 ? Array.from(includedFields) : undefined;
+        const markdown = renderSearchMarkdown({
+          query,
+          count: mdHits.length,
+          topK,
+          minScore: min_score,
+          includedFields: includedArr,
+          clipStoreSize: clipStoreSize(),
+          hits: mdHits,
+        });
+        return {
+          content: [{ type: 'text' as const, text: markdown }],
+        };
+      }
+
+      // JSON renderer: lean default with opt-in include for metadata.
       const payload: Record<string, unknown> = {
         query,
         count: filtered.length,
         topK,
         filters: { module, language, chunkType: chunk_type },
         clipStoreSize: clipStoreSize(),
-        results: filtered.map((r) => {
+        results: hitsWithIds.map((h) => {
           const out: Record<string, unknown> = {
-            id: putClip(r.filePath, r.startLine, r.endLine),
-            filePath: r.filePath,
-            symbolName: r.symbolName || null,
-            score: Number(r.score.toFixed(4)),
-            startLine: r.startLine,
-            endLine: r.endLine,
-            content: r.content,
+            id: h.id,
+            filePath: h.filePath,
+            symbolName: h.symbolName || null,
+            score: Number(h.score.toFixed(4)),
+            startLine: h.startLine,
+            endLine: h.endLine,
+            content: h.content,
           };
-          if (includedFields.has('chunkType')) out.chunkType = r.chunkType;
-          if (includedFields.has('module')) out.module = r.module;
-          if (includedFields.has('language')) out.language = r.language;
+          if (includedFields.has('chunkType')) out.chunkType = h.chunkType;
+          if (includedFields.has('module')) out.module = h.module;
+          if (includedFields.has('language')) out.language = h.language;
           return out;
         }),
       };

@@ -199,18 +199,109 @@ Content-Type: application/json
   "language": "typescript",     // optional filter
   "chunk_type": "function",     // optional filter
   "min_score": 0.7,             // optional quality threshold (0..1)
-  "include": ["chunkType", "module", "language"]  // optional opt-in metadata
+  "include": ["chunkType", "module", "language"],  // optional opt-in metadata
+  "format": "json"              // optional response format; default "markdown"
 }
 ```
 
-**Default response is lean** — each hit carries only the always-useful
-fields: `id`, `filePath`, `symbolName`, `score`, `startLine`, `endLine`,
-`content`. The `chunkType`, `module`, `language` fields are **opt-in** via
-`include` (see below) — they're useful as filter inputs but largely
-redundant in the response (you can derive them from `filePath` and
-`content`).
+**Default response is markdown** — a single document with a `# Search: "..."`
+title and one-line summary at the top, then per-hit fenced code blocks
+with a metadata caption line beneath each. Code is the primary matter;
+metadata is the caption. See "Response format: markdown by default"
+below for the shape.
 
-Response: `{ success, data: { query, results: [{ id, filePath, symbolName, score, startLine, endLine, content, ...optional includes }], count, topK, clipStoreSize, minScore?, candidatesBeforeFilter?, includedFields? } }`.
+Pass `"format": "json"` for the structured response. See "JSON response
+shape" further down.
+
+#### Response format: markdown by default
+
+The markdown response is a single document:
+
+````markdown
+# Search: "how invoices are created"
+
+3 results • top_k: 10 • min_score: 0.7 • clip store: 142
+
+---
+
+```typescript
+/**
+ * Clawback transaction — reclaim issued tokens or MPTs from a holder's account.
+ *
+ * @see https://xrpl.org/clawback.html
+ */
+import type { BaseTransactionFields } from '../types/base.js';
+...
+```
+
+src/transactions/clawback.ts:1-11 • file-header • score: 0.8146 • id: 1
+
+---
+
+```typescript
+export class ClawbackTx extends TokenTransaction {
+  override readonly TransactionType = 'Clawback' as const;
+  ...
+}
+```
+
+src/transactions/clawback.ts:18-38 • ClawbackTx • score: 0.7353 • id: 2
+````
+
+Structure:
+- **Header**: `# Search: "<query>"` followed by a one-line summary
+  (`count • top_k • min_score? • included? • clip store: N`).
+- **Per hit**:
+  - A code fence with the language hint (from the chunker; falls back to
+    `text` if unknown).
+  - The full chunk content, pristine.
+  - A plain-text caption line: `filePath:startLine-endLine` • `symbolName`
+    (when present) • `score: N` • `chunkType: …` (when `include`d) •
+    `module: …` (when `include`d) • `id: N`.
+- Hits are separated by `---` (horizontal rule).
+
+`Content-Type: text/markdown; charset=utf-8`.
+
+**Why markdown**: agents and humans read code naturally when it's fenced.
+Metadata sits below each block as a caption, visually subordinate. JSON
+preserves typed structure but every field competes for visual weight;
+markdown gives the code the prominence it deserves and parks metadata in
+the gutter.
+
+#### JSON response shape
+
+Pass `"format": "json"` to opt in. The response envelope stays the same
+as before; only the body is structured instead of rendered.
+
+```json
+{
+  "success": true,
+  "data": {
+    "query": "...",
+    "count": 10,
+    "topK": 10,
+    "clipStoreSize": 142,
+    "results": [
+      {
+        "id": 42,
+        "filePath": "server/src/modules/billing/routes.ts",
+        "symbolName": "createInvoice",
+        "score": 0.842,
+        "startLine": 42,
+        "endLine": 80,
+        "content": "export async function createInvoice(req, res) { ... }"
+      }
+    ],
+    "minScore": 0.7,
+    "candidatesBeforeFilter": 10,
+    "includedFields": ["chunkType", "module", "language"]
+  }
+}
+```
+
+**Default response per hit is lean** — `id`, `filePath`, `symbolName`,
+`score`, `startLine`, `endLine`, `content`. The `chunkType`, `module`,
+`language` fields are **opt-in** via `include` (see below).
 
 - `score` is 0..1 cosine similarity — ≥0.75 = strong, 0.55–0.75 = review,
   <0.55 = likely noise.
@@ -376,13 +467,17 @@ Spawns a stdio MCP server exposing four tools:
   `query` (natural language), `top_k` (1–50, default 10), `module`,
   `language`, `chunk_type`, `min_score` (optional filters; `min_score`
   drops hits below the cosine-similarity threshold after the vector
-  search), `include` (opt-in metadata fields to add to each result).
-  Default response is lean: `id`, `filePath`, `symbolName`, `score`,
-  `startLine`, `endLine`, `content`. Pass `include: ["chunkType",
-  "module", "language"]` (any subset) to opt in to the metadata fields.
-  When `min_score` is set, response also includes `minScore` and
-  `candidatesBeforeFilter`. When `include` is set, response also
-  includes `includedFields`.
+  search), `include` (opt-in metadata fields to add to each result),
+  `format` (response format: `"markdown"` default or `"json"` opt-in).
+  **Default response is a single markdown document** with a `# Search: "..."`
+  title and per-hit code fences + metadata captions. Pass
+  `format: "json"` for the structured response. When `format: "json"`,
+  default per-hit fields are `id`, `filePath`, `symbolName`, `score`,
+  `startLine`, `endLine`, `content` (lean); pass
+  `include: ["chunkType", "module", "language"]` to opt in to the
+  metadata fields. When `min_score` is set, response also includes
+  `minScore` and `candidatesBeforeFilter`. When `include` is set,
+  response also includes `includedFields`.
 - `codebase_clip` — fetch a clip by its short numeric id from the
   in-memory store. Args: EITHER `id: number` (single) OR `ids: number[]`
   (batch). Ids are assigned by `codebase_semantic_search` and are valid

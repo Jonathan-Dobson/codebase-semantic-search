@@ -27,14 +27,30 @@ AFTER the vector search — you may get fewer than `top_k` results, bump
 `top_k` if you need a guaranteed count). Combine filters with `query` to
 narrow fast.
 
-### Response is lean by default
+### Response format: markdown by default
+
+The default response is a **single markdown document** — `# Search: "..."`
+title at the top with a one-line summary (count, `top_k`, `min_score` if
+set, included fields, clip store size), then one fenced code block per
+hit followed by a plain-text caption line with the file path:line range,
+symbol name, score, and id. Code is the primary matter, metadata is the
+caption beneath it.
+
+Pass `format: "json"` if you need the structured response (programmatic
+extraction, downstream tooling that expects JSON). In MCP, the `format`
+arg is part of the tool schema; in HTTP, set `"format": "json"` in the
+request body.
+
+### Lean by default
 
 Default response per hit: `id`, `filePath`, `symbolName`, `score`,
 `startLine`, `endLine`, `content`. The `chunkType`, `module`, `language`
 fields are **opt-in** via `include` — they're useful as filter inputs
 but largely redundant in the response (derivable from `filePath` and
 `content`). Pass `include: ["chunkType", "module", "language"]` (or a
-subset) only when you actually need them.
+subset) only when you actually need them. (For markdown responses,
+`language` is always used for the code-fence hint even when not in the
+caption.)
 
 ### Read the results
 

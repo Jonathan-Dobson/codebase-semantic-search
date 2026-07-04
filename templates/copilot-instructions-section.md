@@ -21,6 +21,48 @@ curl -s http://localhost:7700/search \
   -d '{"query": "<natural language>", "top_k": 10}'
 ```
 
+### Response format: markdown by default
+
+The default response is a **single markdown document** — `# Search: "..."`
+title at the top with a one-line summary (count, `top_k`, `min_score` if
+set, included fields, clip store size), then one fenced code block per
+hit followed by a plain-text caption line with the file path:line range,
+symbol name, score, and id. Code is the primary matter; metadata is the
+caption beneath it.
+
+Pass `format: "json"` if you need the structured response (programmatic
+extraction, downstream tooling that expects JSON). In MCP, the `format`
+arg is part of the tool schema; in HTTP, set `"format": "json"` in the
+request body.
+
+Example markdown response:
+
+````markdown
+# Search: "how invoices are created"
+
+3 results • top_k: 10 • clip store: 142
+
+---
+
+```typescript
+/**
+ * Clawback transaction — reclaim issued tokens or MPTs from a holder's account.
+ */
+import type { BaseTransactionFields } from '../types/base.js';
+...
+```
+
+src/transactions/clawback.ts:1-11 • file-header • score: 0.8146 • id: 1
+
+---
+
+```typescript
+export class ClawbackTx extends TokenTransaction { ... }
+```
+
+src/transactions/clawback.ts:18-38 • ClawbackTx • score: 0.7353 • id: 2
+````
+
 ### Optional filters
 
 | filter       | matches against                                | examples                                          |
@@ -72,9 +114,9 @@ Recommended bands:
 - **< 0.55** — likely noise; widen the query or add filters instead of
   lowering the threshold.
 
-### Response shape
+### Response shape (JSON opt-in)
 
-Default response is **lean** — only the always-useful fields:
+Default response is **markdown** (see "Response format: markdown by default" above). For the structured JSON shape, pass `format: "json"`:
 
 ```json
 {
@@ -99,7 +141,7 @@ Default response is **lean** — only the always-useful fields:
 }
 ```
 
-#### Field reference
+#### Field reference (JSON `results[]`)
 
 | field                | meaning                                                                       |
 |----------------------|-------------------------------------------------------------------------------|

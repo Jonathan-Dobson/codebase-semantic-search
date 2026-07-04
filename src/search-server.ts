@@ -10,6 +10,7 @@ import {
 import { CONFIG } from './config.js';
 import { putClip, getClip, clipStoreSize } from './clip-store.js';
 import { readFileSlice, READ_MAX_RANGE, READ_MAX_FILE_SIZE } from './read-clip.js';
+import { renderSearchMarkdown, type MarkdownHit } from './render-search.js';
 
 // Cap on batch ids per /clips request. Keeps response payloads bounded
 // even if a caller dumps the entire store into one request.
@@ -47,6 +48,28 @@ function parseInclude(
   return { ok: true, fields };
 }
 
+// Response format. Default is markdown — clean visual hierarchy for agents
+// and humans (code first, metadata as caption below). JSON stays available
+// via opt-in for programmatic extraction (`format: "json"`).
+const ALLOWED_FORMATS = ['markdown', 'json'] as const;
+type ResponseFormat = (typeof ALLOWED_FORMATS)[number];
+
+function parseFormat(raw: unknown): { ok: true; format: ResponseFormat } | { ok: false; error: string } {
+  if (raw === undefined || raw === null || raw === '') {
+    return { ok: true, format: 'markdown' };
+  }
+  if (typeof raw !== 'string') {
+    return { ok: false, error: 'format must be a string' };
+  }
+  if (!(ALLOWED_FORMATS as readonly string[]).includes(raw)) {
+    return {
+      ok: false,
+      error: `unknown format "${raw}". Allowed values: ${ALLOWED_FORMATS.join(', ')}`,
+    };
+  }
+  return { ok: true, format: raw as ResponseFormat };
+}
+
 export function createApp(): Express {
   const app = express();
   app.use(express.json());
@@ -66,7 +89,16 @@ export function createApp(): Express {
 
   app.post('/search', async (req, res) => {
     try {
-      const { query, top_k = 10, module, language, chunk_type, min_score, include } = req.body;
+      const {
+        query,
+        top_k = 10,
+        module,
+        language,
+        chunk_type,
+        min_score,
+        include,
+        format,
+      } = req.body;
 
       if (!query || typeof query !== 'string') {
         res
@@ -76,6 +108,15 @@ export function createApp(): Express {
       }
 
       const topK = Math.min(Math.max(1, Number(top_k) || 10), 50);
+
+      // Parse response format. Default = markdown. JSON is opt-in for
+      // programmatic extraction. Unknown value or wrong type = 400.
+      const formatResult = parseFormat(format);
+      if (!formatResult.ok) {
+        res.status(400).json({ success: false, error: formatResult.error });
+        return;
+      }
+      const responseFormat = formatResult.format;
 
       // Parse include opt-in. Default = empty set (lean response, omits
       // chunkType / module / language). Unknown value or wrong type = 400.
@@ -120,21 +161,66 @@ export function createApp(): Express {
         ? rawResults.filter((r) => r.score >= minScore)
         : rawResults;
 
-      // Build lean result objects by default; add chunkType / module /
-      // language only when explicitly requested via `include`.
-      const resultsWithIds = filtered.map((r: SearchResult) => {
+      // Register a clip id for every surviving hit (needed by both formats).
+      const hitsWithIds = filtered.map((r: SearchResult) => ({
+        id: putClip(r.filePath, r.startLine, r.endLine),
+        filePath: r.filePath,
+        symbolName: r.symbolName,
+        chunkType: r.chunkType,
+        module: r.module,
+        language: r.language,
+        startLine: r.startLine,
+        endLine: r.endLine,
+        score: r.score,
+        content: r.content,
+      }));
+
+      if (responseFormat === 'markdown') {
+        // Markdown renderer always has access to the chunker's language
+        // (drives the code fence hint), even though `include` controls
+        // whether `language` shows up in the JSON caption.
+        const mdHits: MarkdownHit[] = hitsWithIds.map((h) => ({
+          id: h.id,
+          filePath: h.filePath,
+          symbolName: h.symbolName,
+          score: Number(h.score.toFixed(4)),
+          startLine: h.startLine,
+          endLine: h.endLine,
+          content: h.content,
+          language: h.language,
+          chunkType: includedFields.has('chunkType') ? h.chunkType : undefined,
+          module: includedFields.has('module') ? h.module : undefined,
+        }));
+        const includedArr =
+          includedFields.size > 0 ? Array.from(includedFields) : undefined;
+        const markdown = renderSearchMarkdown({
+          query,
+          count: mdHits.length,
+          topK,
+          minScore: minScoreApplied ? minScore : undefined,
+          includedFields: includedArr as IncludeField[] | undefined,
+          clipStoreSize: clipStoreSize(),
+          hits: mdHits,
+        });
+        res.set('Content-Type', 'text/markdown; charset=utf-8');
+        res.send(markdown);
+        return;
+      }
+
+      // JSON renderer: lean default with opt-in include for metadata.
+      const resultsWithIds = hitsWithIds.map((h) => {
         const out: Record<string, unknown> = {
-          id: putClip(r.filePath, r.startLine, r.endLine),
-          filePath: r.filePath,
-          symbolName: r.symbolName || null,
-          score: Number(r.score.toFixed(4)),
-          startLine: r.startLine,
-          endLine: r.endLine,
-          content: r.content,
+          id: h.id,
+          filePath: h.filePath,
+          symbolName: h.symbolName || null,
+          score: Number(h.score.toFixed(4)),
+          startLine: h.startLine,
+          endLine: h.endLine,
+          content: h.content,
         };
-        if (includedFields.has('chunkType')) out.chunkType = r.chunkType;
-        if (includedFields.has('module')) out.module = r.module;
-        if (includedFields.has('language')) out.language = r.language;
+        if (includedFields.has('chunkType')) out.chunkType = h.chunkType;
+        if (includedFields.has('module')) out.module = h.module;
+        if (includedFields.has('language')) out.language = h.language;
         return out;
       });
 
@@ -417,7 +503,7 @@ export async function startServer(): Promise<void> {
     console.log(
       `\nCodebase Semantic Search API running at http://localhost:${CONFIG.searchPort}`,
     );
-    console.log(`  POST /search             — semantic search (returns results with short numeric ids)`);
+    console.log(`  POST /search             — semantic search (default: markdown; pass format:"json" for structured response)`);
     console.log(`  POST /read               — fetch a slice of a file by line range`);
     console.log(`  GET  /clip/:id           — fetch one clip by its short id (from /search results)`);
     console.log(`  GET  /clips?ids=1,2,3    — batch fetch (small batches, curl-friendly)`);

@@ -66,13 +66,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `content`. Allowed values: `"chunkType"`, `"module"`, `"language"`.
   Unknown value or wrong type returns HTTP 400 with the allowed list.
   When `include` is set, response also includes `includedFields`.
+- **`format` parameter on `POST /search` and `codebase_semantic_search`** —
+  response format selector. Default `"markdown"`, opt-in `"json"` via
+  `format: "json"` on the request body / tool args. Markdown response
+  is a single document with a `# Search: "..."` title and one-line
+  summary at the top, then per-hit fenced code blocks with a plain-text
+  caption line beneath each (`filePath:startLine-endLine • symbolName •
+  score: N • chunkType • module • id: N`). Code is the primary matter;
+  metadata is the caption. `Content-Type: text/markdown; charset=utf-8`.
+  The language hint in the code fence is always populated from the
+  chunker (server-known), even when `language` is not in the response.
+  Hits are separated by `---` (horizontal rule). JSON response is the
+  same lean shape as before — opt-in `include` still works there.
+  Allowed values: `"markdown"`, `"json"`. Unknown value returns HTTP
+  400 with the allowed list. Other endpoints (`/clip/:id`, `/clips`,
+  `/read`) remain JSON-only.
 
 ### Changed (breaking)
 
 - **`POST /search` and `codebase_semantic_search` response shape** —
   the per-result fields `chunkType`, `module`, `language` are no longer
-  included by default. Default response now contains only the
-  always-useful set: `id`, `filePath`, `symbolName`, `score`,
+  included by default in JSON responses. Default response now contains
+  only the always-useful set: `id`, `filePath`, `symbolName`, `score`,
   `startLine`, `endLine`, `content`. **This is a breaking change** for
   any caller that was reading those three fields in the response. To
   restore the old behavior, pass `include: ["chunkType", "module",
@@ -81,6 +96,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   templates; rationale is that those fields are largely redundant in
   the response (derivable from `filePath` / `content`) and were wasting
   tokens on every search.
+- **`POST /search` and `codebase_semantic_search` default response format**
+  — flipped from JSON to **markdown**. The default response is now a
+  single markdown document (`Content-Type: text/markdown; charset=utf-8`)
+  with code fences and metadata captions. This is a breaking change for
+  any caller that was parsing the JSON response by default. To restore
+  the old behavior, pass `format: "json"` on every request. Migration is
+  mechanical: add `"format": "json"` to every search body / tool args.
+  Documented in README and templates; rationale is that markdown gives
+  the code the visual prominence it deserves and parks metadata in the
+  gutter, which is more readable for both agents and humans.
 
 ### Changed
 - README `HTTP API` section now documents `/search`, `/read`, `/clip/:id`,
