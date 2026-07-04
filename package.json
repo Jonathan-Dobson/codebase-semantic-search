@@ -44,6 +44,9 @@
   "bugs": {
     "url": "https://github.com/Jonathan-Dobson/codebase-semantic-search/issues"
   },
+  "publishConfig": {
+    "provenance": true
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
     "@zilliz/milvus2-sdk-node": "^2.4.9",

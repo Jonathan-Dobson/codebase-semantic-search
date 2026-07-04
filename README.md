@@ -453,6 +453,38 @@ This package is the local-first version: Milvus in Docker, Ollama for
 embeddings, chokidar for live updates, MCP for agent integration. ~10 source
 files, no cloud dependencies, ~50ms per query after a warm cache.
 
+## Releasing
+
+This package publishes to npm automatically via GitHub Actions — see
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml). The
+publish is triggered by pushing a `v*` tag (or via manual dispatch in the
+Actions tab).
+
+### To cut a release
+
+1. Bump `version` in `package.json` (`npm version 0.2.0` for stable,
+   `npm version 0.2.0-beta.1 --preid=beta` for a pre-release — `npm
+   version` also commits and tags for you).
+2. Add an entry to `CHANGELOG.md` summarising what's in the cut.
+3. Push the commit and tag:
+   ```bash
+   git push --follow-tags
+   ```
+4. CI publishes the version to npm — the dist-tag is **auto-derived from
+   the version**: `v0.2.0` → `latest`, `v0.2.0-beta.1` → `beta`,
+   `v0.2.0-rc.2` → `rc`. A GitHub Release is opened with auto-generated
+   release notes.
+
+### CI prerequisites (one-time, on the repo)
+
+The workflow reads an `NPM_TOKEN` secret from the repo's Actions
+settings. Generate it on npmjs.com
+([npm tokens docs](https://docs.npmjs.com/creating-and-viewing-access-tokens)):
+create a **granular access token** scoped to this repository with
+`Packages and scopes → Read and write`. Paste the value into
+`Settings → Secrets and variables → Actions → New repository secret`
+with name `NPM_TOKEN`. After that, releases are unattended.
+
 ## License
 
 MIT
