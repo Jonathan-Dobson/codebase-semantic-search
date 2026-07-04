@@ -23,6 +23,7 @@ import { statusCommand } from './commands/status.js';
 import { doctorCommand } from './commands/doctor.js';
 import { upCommand } from './commands/up.js';
 import { downCommand } from './commands/down.js';
+import { version } from './version.js';
 
 const program = new Command();
 
@@ -31,7 +32,7 @@ program
   .description(
     'Local semantic search engine for any codebase. Reuses Ollama embeddings + Milvus vector storage. Exposes a typed MCP tool for agents and a curl-friendly HTTP API for humans.',
   )
-  .version('0.1.0');
+  .version(version);
 
 program
   .command('init')

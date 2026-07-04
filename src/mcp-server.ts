@@ -25,6 +25,7 @@ import { CONFIG } from './config.js';
 import { putClip, getClip, clipStoreSize } from './clip-store.js';
 import { readFileSlice } from './read-clip.js';
 import { renderSearchMarkdown, type MarkdownHit } from './render-search.js';
+import { version } from './version.js';
 
 // Default relative quality threshold. Mirrors the HTTP server constant;
 // single source of truth could be moved to a shared module if more
@@ -33,7 +34,7 @@ const DEFAULT_MIN_SCORE_DIFF = 0.1;
 
 const server = new McpServer({
   name: CONFIG.mcpServerName,
-  version: '0.1.0',
+  version,
 });
 
 server.tool(
