@@ -16,6 +16,12 @@ import { renderSearchMarkdown, type MarkdownHit } from './render-search.js';
 // even if a caller dumps the entire store into one request.
 const MAX_BATCH_IDS = 500;
 
+// Default relative quality threshold applied to every /search when the
+// caller doesn't provide one. Equivalent to "drop anything more than 0.1
+// below the best match." Mutable here as a single source of truth — both
+// the HTTP server and the MCP server read this constant.
+const DEFAULT_MIN_SCORE_DIFF = 0.1;
+
 // Optional metadata fields that callers can opt-in to via `include`.
 // Default /search response omits these — chunkType / module / language are
 // useful as filter inputs but largely redundant as response fields (they
@@ -129,10 +135,11 @@ export function createApp(): Express {
       const includedFields = includeResult.fields;
 
       // Optional absolute threshold (min_score): drop hits below the
-      // floor. Mutual exclusion with min_score_diff is checked below.
+      // floor. Mutually exclusive with min_score_diff is checked below.
+      const userProvidedMinScore = min_score !== undefined && min_score !== null;
       let minScore = 0;
       let minScoreApplied = false;
-      if (min_score !== undefined && min_score !== null) {
+      if (userProvidedMinScore) {
         const parsed = Number(min_score);
         if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
           res.status(400).json({
@@ -145,19 +152,28 @@ export function createApp(): Express {
         minScoreApplied = true;
       }
 
-      // Optional relative threshold (min_score_diff): drop hits whose
-      // score is more than this far below the best hit. Decimal 0..1.
-      // Mutually exclusive with min_score.
-      let minScoreDiff = 0;
-      let minScoreDiffApplied = false;
-      if (min_score_diff !== undefined && min_score_diff !== null) {
-        if (minScoreApplied) {
-          res.status(400).json({
-            success: false,
-            error: 'min_score and min_score_diff are mutually exclusive — pick one',
-          });
-          return;
-        }
+      // Relative threshold (min_score_diff): drop hits whose score is
+      // more than this far below the best hit. Decimal 0..1. Mutually
+      // exclusive with min_score (only when both are EXPLICITLY provided
+      // — the default does not count as "provided" and is ignored if the
+      // caller sets min_score instead).
+      //
+      // Default: DEFAULT_MIN_SCORE_DIFF, applied when the caller doesn't
+      // supply either filter.
+      const userProvidedMinScoreDiff =
+        min_score_diff !== undefined && min_score_diff !== null;
+
+      if (userProvidedMinScore && userProvidedMinScoreDiff) {
+        res.status(400).json({
+          success: false,
+          error: 'min_score and min_score_diff are mutually exclusive — pick one',
+        });
+        return;
+      }
+
+      let minScoreDiff = DEFAULT_MIN_SCORE_DIFF;
+      let minScoreDiffApplied = !userProvidedMinScore; // default unless caller set min_score
+      if (userProvidedMinScoreDiff) {
         const parsed = Number(min_score_diff);
         if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
           res.status(400).json({
@@ -167,6 +183,9 @@ export function createApp(): Express {
           return;
         }
         minScoreDiff = parsed;
+        // Caller explicitly set min_score_diff, which also overrides the
+        // default — even if they also set min_score (already 400'd above),
+        // but here we're in the path where only one is set.
         minScoreDiffApplied = true;
       }
 

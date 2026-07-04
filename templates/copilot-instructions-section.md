@@ -6,29 +6,31 @@ Use it for **conceptual/meaning-based** discovery when `grep_search` is too lite
 
 ### Run a query
 
-**Preferred — MCP tool `codebase_semantic_search`** (typed, no JSON wrangling):
+Minimum viable call — just the query:
 
 ```text
 tool:   codebase_semantic_search
-input:  { "query": "<natural language>", "top_k": 10 }
+input:  { "query": "<natural language>" }
 ```
-
-**Fallback — HTTP** (when MCP isn't registered for this client):
 
 ```bash
 curl -s http://localhost:7700/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "<natural language>", "top_k": 10}'
+  -d '{"query": "<natural language>"}'
 ```
+
+Defaults applied: `top_k: 10` and `min_score_diff: 0.1` (drop anything more
+than 10% below the best match). To override or add filters, see "Optional
+filters" below.
 
 ### Response format: markdown by default
 
 The default response is a **single markdown document** — `# Search: "..."`
-title at the top with a one-line summary (count, `top_k`, `min_score` if
-set, included fields, clip store size), then one fenced code block per
-hit followed by a plain-text caption line with the file path:line range,
-symbol name, score, and id. Code is the primary matter; metadata is the
-caption beneath it.
+title at the top with a one-line summary (count, `top_k`, `min_score_diff`
+if applied, included fields, clip store size), then one fenced code block
+per hit followed by a plain-text caption line with the file path:line
+range, symbol name, score, and id. Code is the primary matter; metadata
+is the caption beneath it.
 
 Pass `format: "json"` if you need the structured response (programmatic
 extraction, downstream tooling that expects JSON). In MCP, the `format`
@@ -40,7 +42,7 @@ Example markdown response:
 ````markdown
 # Search: "how invoices are created"
 
-3 results • top_k: 10 • clip store: 142
+3 results • top_k: 10 • min_score_diff: 0.1 • clip store: 142
 
 ---
 
@@ -65,13 +67,16 @@ src/transactions/clawback.ts:18-38 • ClawbackTx • score: 0.7353 • id: 2
 
 ### Optional filters
 
-| filter       | matches against                                | examples                                          |
-|--------------|------------------------------------------------|---------------------------------------------------|
-| `module`     | first path segment under the workspace root    | `src`, `server/src/modules/billing`, `docs`       |
-| `language`   | file language                                  | `typescript`, `tsx`, `javascript`, `markdown`, `json`, `yaml`, `terraform`, `python` |
-| `chunk_type` | AST node type (TS/JS) or section kind (md)     | `function`, `class`, `interface`, `section`, `block` |
-| `min_score`  | minimum cosine-similarity score (0..1)         | `0.75` for "strong matches only"                  |
-| `min_score_diff` | max distance below best hit (0..1)         | `0.1` for "everything within 10% of the top match" |
+| filter            | matches against                                | default  | examples                                          |
+|-------------------|------------------------------------------------|----------|---------------------------------------------------|
+| `top_k`           | number of candidates requested from Milvus     | `10`     | `5` for "give me the top 5"                       |
+| `module`          | first path segment under the workspace root    | —        | `src`, `server/src/modules/billing`, `docs`       |
+| `language`        | file language                                  | —        | `typescript`, `tsx`, `javascript`, `markdown`, `json`, `yaml`, `terraform`, `python` |
+| `chunk_type`      | AST node type (TS/JS) or section kind (md)     | —        | `function`, `class`, `interface`, `section`, `block` |
+| `min_score`       | minimum cosine-similarity score (0..1)         | —        | `0.75` for "strong matches only"                  |
+| `min_score_diff`  | max distance below best hit (0..1)             | `0.1`    | `0.05` for "tight", `0.3` for "lenient"           |
+| `include`         | opt-in metadata fields on each result          | —        | `["chunkType", "module", "language"]`             |
+| `format`          | response format                                | `"markdown"` | `"json"` for structured response             |
 
 Combine with `query` to narrow fast. Example — find the TypeScript function that handles a specific HTTP error, requiring a high-quality match:
 

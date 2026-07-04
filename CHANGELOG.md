@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `isError`. When applied, response echoes `minScoreDiff`,
   `appliedThreshold`, `maxScore`, and `candidatesBeforeFilter`.
 
+### Changed (breaking)
+- **`min_score_diff` is now applied by default** on every `/search` and
+  `codebase_semantic_search` call when the caller does not supply a
+  quality filter. Default value: `0.1` (drop anything more than 10%
+  below the best hit). To disable the default, set
+  `min_score_diff: 0` explicitly (keeps only ties with the top hit).
+  Setting `min_score` overrides the default (still mutually exclusive).
+  **This is a behavior change** for any caller that previously got the
+  raw top-`top_k` results without a quality filter — those calls now
+  return only the results within 10% of the best match by default.
+  Migration: explicit `min_score_diff: 1.0` to keep the previous "no
+  filter" behavior, or pass `min_score` for an absolute threshold.
+
 ## [0.2.0-beta.1] - 2026-07-04
 
 Two breaking changes in this release: leaner default `/search` response

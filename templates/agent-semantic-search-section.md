@@ -5,29 +5,26 @@ to find existing code by meaning. **Duplicate code is a defect.**
 
 ### Run a query
 
-**Preferred — MCP tool `codebase_semantic_search`** (typed, no JSON wrangling):
+Minimum viable call — just the query:
 
 ```text
 tool:   codebase_semantic_search
-input:  { "query": "<natural language>", "top_k": 10 }
+input:  { "query": "<natural language>" }
 ```
-
-**Fallback — HTTP** (when MCP isn't registered for this client):
 
 ```bash
 curl -s http://localhost:7700/search -H "Content-Type: application/json" \
-  -d '{"query": "<natural language>", "top_k": 10}'
+  -d '{"query": "<natural language>"}'
 ```
 
-Optional filters: `module` (first path segment under the workspace root),
-`language` (typescript, tsx, javascript, markdown, json, yaml, terraform,
-python, …), `chunk_type` (function, class, interface, section, block),
-`min_score` (0..1 absolute cosine-similarity threshold; drops
-lower-scoring hits AFTER the vector search), `min_score_diff` (0..1
-relative threshold; drops hits whose score is more than this far below
-the best hit — threshold = `max_score - min_score_diff`). `min_score`
-and `min_score_diff` are mutually exclusive — pick one. Combine filters
-with `query` to narrow fast.
+Defaults applied: `top_k: 10` and `min_score_diff: 0.1` (drop anything more
+than 10% below the best match). To override or add filters:
+
+**Optional filters**: `top_k` (1–50, default 10), `module`, `language`,
+`chunk_type`, `min_score` (absolute 0..1 threshold), `min_score_diff`
+(0..1 relative threshold — default 0.1; drops hits more than this far
+below the best hit). `min_score` and `min_score_diff` are mutually
+exclusive — pick one.
 
 ### Response format: markdown by default
 

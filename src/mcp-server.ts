@@ -26,6 +26,11 @@ import { putClip, getClip, clipStoreSize } from './clip-store.js';
 import { readFileSlice } from './read-clip.js';
 import { renderSearchMarkdown, type MarkdownHit } from './render-search.js';
 
+// Default relative quality threshold. Mirrors the HTTP server constant;
+// single source of truth could be moved to a shared module if more
+// callers need it.
+const DEFAULT_MIN_SCORE_DIFF = 0.1;
+
 const server = new McpServer({
   name: CONFIG.mcpServerName,
   version: '0.1.0',
@@ -80,7 +85,7 @@ server.tool(
       .max(1)
       .optional()
       .describe(
-        'Relative quality filter: drop hits whose score is more than this far below the best hit. Decimal in [0, 1]. Threshold = max_score - min_score_diff. Mutually exclusive with min_score.',
+        'Relative quality filter: drop hits whose score is more than this far below the best hit. Decimal in [0, 1]. Threshold = max_score - min_score_diff. Applied by default at 0.1 if neither this nor min_score is set. Mutually exclusive with min_score (only when both are explicitly provided).',
       ),
     include: z
       .array(z.enum(['chunkType', 'module', 'language']))
@@ -108,7 +113,10 @@ server.tool(
     format,
   }) => {
     try {
-      if (min_score !== undefined && min_score_diff !== undefined) {
+      const userProvidedMinScore = min_score !== undefined;
+      const userProvidedMinScoreDiff = min_score_diff !== undefined;
+
+      if (userProvidedMinScore && userProvidedMinScoreDiff) {
         return {
           isError: true,
           content: [
@@ -129,16 +137,21 @@ server.tool(
       });
 
       // Apply quality filter (if any) before registering clips, so the
-      // clip store doesn't accumulate entries the caller never saw.
+      // clip store doesn't accumulate entries the caller never saw. The
+      // server-side default (DEFAULT_MIN_SCORE_DIFF) kicks in when the
+      // caller doesn't provide either filter.
       let filtered = rawResults;
       let appliedThreshold: number | undefined;
       let maxScore: number | undefined;
-      if (min_score_diff !== undefined && rawResults.length > 0) {
+      const effectiveMinScoreDiff = userProvidedMinScoreDiff
+        ? min_score_diff
+        : DEFAULT_MIN_SCORE_DIFF;
+      if (!userProvidedMinScore && rawResults.length > 0) {
         maxScore = rawResults.reduce((m, r) => Math.max(m, r.score), 0);
-        const threshold = Math.max(0, maxScore - min_score_diff);
+        const threshold = Math.max(0, maxScore - effectiveMinScoreDiff);
         appliedThreshold = threshold;
         filtered = rawResults.filter((r) => r.score >= threshold);
-      } else if (min_score !== undefined) {
+      } else if (userProvidedMinScore) {
         appliedThreshold = min_score;
         filtered = rawResults.filter((r) => r.score >= min_score);
       }
@@ -180,8 +193,8 @@ server.tool(
           query,
           count: mdHits.length,
           topK,
-          minScore: min_score,
-          minScoreDiff: min_score_diff,
+          minScore: userProvidedMinScore ? min_score : undefined,
+          minScoreDiff: !userProvidedMinScore ? effectiveMinScoreDiff : min_score_diff,
           includedFields: includedArr,
           clipStoreSize: clipStoreSize(),
           hits: mdHits,
@@ -214,12 +227,11 @@ server.tool(
           return out;
         }),
       };
-      if (min_score !== undefined) {
+      if (userProvidedMinScore) {
         payload.minScore = min_score;
         payload.candidatesBeforeFilter = rawResults.length;
-      }
-      if (min_score_diff !== undefined) {
-        payload.minScoreDiff = min_score_diff;
+      } else {
+        payload.minScoreDiff = effectiveMinScoreDiff;
         payload.appliedThreshold = appliedThreshold;
         payload.maxScore = maxScore;
         payload.candidatesBeforeFilter = rawResults.length;
