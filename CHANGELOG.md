@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-07-04
+
+### Changed
+- **`init` now writes a canonical reference doc + slim pointers**
+  instead of duplicating ~200 lines of MCP documentation into every
+  agent file. Previously, each `.github/agents/*.agent.md` got the full
+  MCP reference inline — for a project with N agents, that meant N
+  copies of the same ~200 lines and a real risk of drift if any one
+  was edited by hand. Now `init` writes:
+
+  - **`.github/instructions/codebase-semantic-search.instructions.md`**
+    — the canonical MCP + HTTP reference (full tool list, defaults,
+    response shapes, filters, recovery flow, bootstrap). Auto-loaded
+    into every agent context via `applyTo: "**"`. One file, one source
+    of truth.
+  - **A slim dual-pointer block** appended to every
+    `.github/agents/*.agent.md` (marker-bounded so re-runs are
+    idempotent). ~20 lines per agent pointing at the canonical doc
+    above. With N agents, total bloat is `N × 20 + 1 × ~300` lines
+    instead of `N × 200`.
+  - **A slim pointer section** in `.github/copilot-instructions.md`
+    (created if missing).
+
+- **The canonical doc covers both MCP and HTTP at peer depth**, not
+  HTTP-as-an-appendix. Both paths are now documented identically: the
+  same four tools (with MCP and HTTP equivalents side by side), the
+  same filter set, the same recovery flow (codebase_stats / GET /stats
+  → codesearch doctor, never silent grep fallback), the same bootstrap
+  (npm install + codesearch up + agent-runtime registration).
+
+- **Per-agent pointer block is now a dual-pointer** — it mentions both
+  the MCP path (preferred) and the HTTP path (fallback) so an agent
+  knows about both without having to read the canonical doc first.
+
+- **Templates** (`templates/codesearch-instructions.md`,
+  `templates/agent-semantic-search-section.md`,
+  `templates/copilot-instructions-section.md`) updated to match.
+
+- **README.md** updated: "Agent templates" section explains the
+  canonical-doc-plus-slim-pointer design and the bloat math
+  (`N × 20 + 1 × ~300` vs `N × 200`). "The init command drops" list
+  updated to include the new canonical instruction file.
+
+No code or runtime behavior changes — only docs and template content,
+plus a new `init` artifact (the canonical instruction file).
+
+## [0.2.2] - 2026-07-04
+
 ### Changed
 - **Docs and agent templates rewritten to lead with MCP**, treating HTTP
   as a fallback for humans / curl debugging. Previously the README and

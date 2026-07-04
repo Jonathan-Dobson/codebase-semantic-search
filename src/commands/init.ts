@@ -102,6 +102,27 @@ function ensureCopilotInstructions(
   return mergeAgentSnippet(filePath, snippet);
 }
 
+function ensureCanonicalInstruction(
+  content: string,
+): 'created' | 'unchanged' | 'skipped' {
+  // Writes the canonical MCP + HTTP reference to
+  // .github/instructions/codebase-semantic-search.instructions.md
+  // (applyTo: "**") — auto-loaded into every agent context. The slim
+  // pointers in each agent file reference this doc, so we keep one
+  // canonical reference per project instead of duplicating 200 lines
+  // across N agents.
+  const dir = path.join(process.cwd(), '.github', 'instructions');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const filePath = path.join(dir, 'codebase-semantic-search.instructions.md');
+  if (fs.existsSync(filePath)) {
+    return 'unchanged';
+  }
+  fs.writeFileSync(filePath, content, 'utf-8');
+  return 'created';
+}
+
 function processAgentFiles(snippet: string): Array<{ file: string; status: string }> {
   const agentsDir = path.join(process.cwd(), '.github', 'agents');
   const results: Array<{ file: string; status: string }> = [];
@@ -184,14 +205,17 @@ export async function initCommand(opts: InitOptions): Promise<void> {
     }
   }
 
-  // 3. Agent file snippets
+  // 3. Agent file snippets + canonical instruction file
   if (opts.agentFiles !== false) {
     const snippet = readTemplate('agent-semantic-search-section.md');
     const copilotSnippet = readTemplate('copilot-instructions-section.md');
+    const canonicalDoc = readTemplate('codesearch-instructions.md');
 
+    const canonicalResult = ensureCanonicalInstruction(canonicalDoc);
     const copilotResult = ensureCopilotInstructions(copilotSnippet);
     const agentResults = processAgentFiles(snippet);
 
+    console.log(`[write] .github/instructions/codebase-semantic-search.instructions.md: ${canonicalResult}`);
     console.log(`[write] .github/copilot-instructions.md: ${copilotResult}`);
     for (const r of agentResults) {
       console.log(`[write] ${r.file}: ${r.status}`);

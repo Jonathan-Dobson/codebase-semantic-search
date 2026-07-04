@@ -241,19 +241,25 @@ Typical workflow:
 3. make your edit in the lines you've now seen in full
 ```
 
-### MCP agent templates
+### Agent templates
 
-`npx codesearch init` (or `up`, if no config exists yet) writes MCP
-instructions into your project's agent files:
+`npx codesearch init` (or `up`, if no config exists yet) wires the
+canonical MCP + HTTP reference into your project's agent ecosystem:
 
-- A `## Semantic Search (always run first)` block into every
-  `.github/agents/*.agent.md` (marker-bounded so re-runs are idempotent).
-- A `## 1.1 Codebase Semantic Search (Local MCP Tool)` section in
-  `.github/copilot-instructions.md` (created if missing).
+- **`.github/instructions/codebase-semantic-search.instructions.md`** —
+  the canonical reference (full tool list, defaults, response shapes,
+  filters, recovery flow, bootstrap). Auto-loaded into every agent
+  context via `applyTo: "**"`. Written once per project.
+- **A slim dual-pointer block** into every `.github/agents/*.agent.md`
+  (marker-bounded so re-runs are idempotent). Points at the canonical
+  doc above — does NOT duplicate its content.
+- **A slim pointer section** in `.github/copilot-instructions.md`
+  (created if missing).
 
-These blocks tell your agent the exact tool names, defaults, response
-shapes, and workflow — they are the recommended source of truth for
-agents, not this README.
+The per-agent blocks are intentionally ~15-20 lines each — they point
+at the canonical doc rather than duplicating it. With N agent files,
+that keeps total agent-ecosystem bloat at `N × 20 + 1 × ~300` lines
+instead of `N × 200`.
 
 ## CLI
 
@@ -302,8 +308,9 @@ npx codesearch down         # Stop Milvus (volumes preserved — index survives)
 The `init` command drops:
 - `.codesearchrc.json` — project-specific config
 - `docker-compose.search.yml` — Milvus + etcd + MinIO
-- A `## Semantic Search (always run first)` block appended to every `.github/agents/*.agent.md` (with marker comments so re-runs are idempotent)
-- A `## 1.1 Codebase Semantic Search (Local MCP Tool)` section in `.github/copilot-instructions.md` (created if missing)
+- `.github/instructions/codebase-semantic-search.instructions.md` — the canonical MCP + HTTP reference, auto-loaded into every agent context
+- A slim dual-pointer block appended to every `.github/agents/*.agent.md` (with marker comments so re-runs are idempotent)
+- A slim pointer section in `.github/copilot-instructions.md` (created if missing)
 
 ### Running multiple codebases in parallel
 
@@ -689,9 +696,10 @@ codebase-semantic-search/
 │       ├── down.ts          # stop Milvus (volumes preserved)
 │       └── status.ts        # config + stats
 └── templates/               # bundled init templates (written into your project)
-    ├── codesearchrc.json
-    ├── copilot-instructions-section.md
-    └── agent-semantic-search-section.md
+    ├── codesearchrc.json                       # project config
+    ├── codesearch-instructions.md              # canonical MCP + HTTP reference (written to .github/instructions/)
+    ├── copilot-instructions-section.md         # slim pointer (appended to .github/copilot-instructions.md)
+    └── agent-semantic-search-section.md        # slim dual-pointer (appended to each .github/agents/*.agent.md)
 ```
 
 ## Why this exists
