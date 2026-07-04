@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] - 2026-07-04
+
+Two related changes: a new `min_score_diff` relative quality filter, and
+then turning that filter on by default. The new param ships first so
+callers can override the default; the default change follows in the same
+release because the project's brand-new and has no users to migrate.
+
 ### Added
 - **`min_score_diff` parameter on `POST /search` and
   `codebase_semantic_search`** — relative quality filter. Decimal in
@@ -20,17 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `appliedThreshold`, `maxScore`, and `candidatesBeforeFilter`.
 
 ### Changed (breaking)
-- **`min_score_diff` is now applied by default** on every `/search` and
-  `codebase_semantic_search` call when the caller does not supply a
-  quality filter. Default value: `0.1` (drop anything more than 10%
-  below the best hit). To disable the default, set
-  `min_score_diff: 0` explicitly (keeps only ties with the top hit).
-  Setting `min_score` overrides the default (still mutually exclusive).
-  **This is a behavior change** for any caller that previously got the
-  raw top-`top_k` results without a quality filter — those calls now
-  return only the results within 10% of the best match by default.
-  Migration: explicit `min_score_diff: 1.0` to keep the previous "no
-  filter" behavior, or pass `min_score` for an absolute threshold.
+- **`min_score_diff: 0.1` is now applied by default** on every
+  `/search` and `codebase_semantic_search` call when the caller does
+  not supply a quality filter. To disable the default, set
+  `min_score_diff: 0` explicitly (keeps only ties with the top hit)
+  or `min_score_diff: 1.0` (clamp keeps everything). Supplying
+  `min_score` overrides the default; they're still mutually exclusive
+  (only when both are explicitly provided). **This is a behavior
+  change** for any caller that previously got the raw top-`top_k`
+  results without a quality filter — those calls now return only the
+  results within 10% of the best match by default.
 
 ## [0.2.0-beta.1] - 2026-07-04
 
