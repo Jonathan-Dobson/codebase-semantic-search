@@ -49,7 +49,9 @@ This is a chunky tool. Don't `up` it on a half-full laptop without expecting:
 - **Disk** — ~600 MB of Docker images + a few GB per project for the Milvus
   index volume (`<project>_milvus_data`). First time is the biggest.
 - **Ports (defaults)** — `19530` Milvus gRPC, `9091` Milvus metrics, `9000`/`9001`
-  MinIO API/console, `2379` etcd, `7700` HTTP API. All overridable via
+  MinIO API/console, `7700` HTTP API. (etcd + MinIO are internal
+  dependencies of Milvus — they're reachable between containers on the
+  `search-network` bridge, not from the host.) All overridable via
   `.codesearchrc.json` or env vars (`MILVUS_PORT`, `SEARCH_PORT`, etc.).
 - **First-run time** — ~45s on Apple Silicon (the bundled Milvus image is
   multi-arch, so Apple Silicon gets **native** `linux/arm64` execution — no
@@ -265,7 +267,8 @@ src/transactions/clawback.ts:18-38 • ClawbackTx • score: 0.7353 • id: 2
 
 Structure:
 - **Header**: `# Search: "<query>"` followed by a one-line summary
-  (`count • top_k • min_score? • included? • clip store: N`).
+  (`count • top_k • min_score? • min_score_diff? • included? • clip store: N`).
+  Each filter only shows when it's actually applied.
 - **Per hit**:
   - A code fence with the language hint (from the chunker; falls back to
     `text` if unknown).
@@ -345,8 +348,10 @@ allowed list. Omit or pass `[]` for the lean default.
 Quality filter applied **after** the vector search. The engine asks Milvus
 for `top_k` candidates, then drops anything below `min_score`. So the
 response may contain fewer than `top_k` results — that's by design (you
-asked for "up to `top_k` results that score ≥ `min_score`"). Bump `top_k`
-(e.g. 30) if you need a guaranteed minimum count of qualifying hits.
+asked for "up to `top_k` results that score ≥ `min_score`"). With the
+default `top_k: 100` you're already at the maximum candidate pool;
+tighten the query (or use `min_score_diff` for a relative cutoff)
+instead of pushing `top_k` higher — it can't go above 100.
 
 Recommended bands:
 - **0.75+** — strong, relevant matches; safe to act on.
@@ -543,7 +548,7 @@ Spawns a stdio MCP server exposing four tools:
   (1-indexed inclusive). 500 lines per call, 25 MB file cap. Use it to
   expand the context around a hit returned by `codebase_semantic_search`
   without re-loading the whole file.
-- `codebase_stats` — chunk count, collection name, embedding model.
+- `codebase_stats` — chunk count, collection name, embedding model, embedding dimensions.
 
 Typical workflow:
 
@@ -608,6 +613,8 @@ codebase-semantic-search/
 │       ├── watch.ts         # file watcher
 │       ├── serve-and-watch.ts
 │       ├── mcp.ts           # stdio MCP server
+│       ├── up.ts            # one-shot bootstrap (init + Milvus + index + dev loop)
+│       ├── down.ts          # stop Milvus (volumes preserved)
 │       └── status.ts        # config + stats
 └── templates/               # bundled init templates
     ├── codesearchrc.json

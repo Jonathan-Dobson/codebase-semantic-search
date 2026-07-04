@@ -30,10 +30,10 @@ exclusive — pick one.
 
 The default response is a **single markdown document** — `# Search: "..."`
 title at the top with a one-line summary (count, `top_k`, `min_score` if
-set, included fields, clip store size), then one fenced code block per
-hit followed by a plain-text caption line with the file path:line range,
-symbol name, score, and id. Code is the primary matter, metadata is the
-caption beneath it.
+explicit, `min_score_diff` if applied, included fields, clip store size),
+then one fenced code block per hit followed by a plain-text caption line
+with the file path:line range, symbol name, score, and id. Code is the
+primary matter, metadata is the caption beneath it.
 
 Pass `format: "json"` if you need the structured response (programmatic
 extraction, downstream tooling that expects JSON). In MCP, the `format`

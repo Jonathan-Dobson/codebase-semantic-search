@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **README**: dropped `2379 etcd` from the host port list — etcd is an
+  internal Milvus dependency, not exposed to the host in
+  `docker-compose.search.yml`. Noted that etcd + MinIO are reachable
+  only between containers on the `search-network` bridge.
+- **README**: response summary format now mentions `min_score_diff?`
+  alongside `min_score?` — both filters echo in the markdown header when
+  applied (the default `min_score_diff: 0.1` shows up on most calls).
+- **README**: `min_score` guidance no longer says "Bump `top_k` (e.g. 30)"
+  — 30 is below the new default of 100. Updated to direct callers to
+  tighten the query / use a relative cutoff instead.
+- **README**: `codebase_stats` description now lists `embeddingDimensions`
+  alongside chunk count / collection name / model (matches the MCP tool
+  output).
+- **README**: Project Layout now includes `commands/up.ts` and
+  `commands/down.ts` (added in 0.2.0-beta.3 but missed from the layout
+  diagram).
+- **Templates** (both `copilot-instructions-section.md` and
+  `agent-semantic-search-section.md`): response summary description
+  mentions both `min_score` and `min_score_diff` (each only shows when
+  applied). Previously each template named only one of the two.
+- **Copilot template**: relative-band recommendation now explicitly says
+  the hit count depends on score distribution, not `top_k`. Removed the
+  stale `top_k: 10` calibration (the older default was 10).
+- **Copilot template**: "Don't widen `top_k` past 20" advice refreshed
+  for the new default of 100 — the candidate pool is already maxed at
+  the default, so widening isn't an option. Now directs to tighten the
+  filter or sharpen the query.
+
 ## [0.2.0-beta.4] - 2026-07-04
 
 ### Changed

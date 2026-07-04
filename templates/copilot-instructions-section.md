@@ -26,11 +26,11 @@ filters" below.
 ### Response format: markdown by default
 
 The default response is a **single markdown document** — `# Search: "..."`
-title at the top with a one-line summary (count, `top_k`, `min_score_diff`
-if applied, included fields, clip store size), then one fenced code block
-per hit followed by a plain-text caption line with the file path:line
-range, symbol name, score, and id. Code is the primary matter; metadata
-is the caption beneath it.
+title at the top with a one-line summary (count, `top_k`, `min_score` if
+explicit, `min_score_diff` if applied, included fields, clip store size),
+then one fenced code block per hit followed by a plain-text caption line
+with the file path:line range, symbol name, score, and id. Code is the
+primary matter; metadata is the caption beneath it.
 
 Pass `format: "json"` if you need the structured response (programmatic
 extraction, downstream tooling that expects JSON). In MCP, the `format`
@@ -143,9 +143,10 @@ When set, the response echoes `minScoreDiff`, `appliedThreshold`,
 }
 ```
 
-Recommended bands:
-- **0.05–0.15** — strict relative threshold; typically keeps 3–8 hits
-  on a sizeable codebase with `top_k: 10`.
+Recommended bands (relative `min_score_diff`):
+- **0.05–0.15** — strict; typically keeps 3–8 strong hits within that band
+  of the best match. Count depends on score distribution, not on `top_k`
+  directly.
 - **0.2–0.3** — lenient; useful when the top match is strong but the
   semantic space drops off sharply below it.
 
@@ -294,7 +295,9 @@ Good queries read like a one-sentence question to a teammate who's read the code
   (`auth` ↔ `authentication` ↔ `login` ↔ `signin`).
 - If noisy (lots of mid-score irrelevant hits) → narrow the query with a
   concrete noun from the domain (a schema field, an HTTP route, an error
-  class). Don't widen `top_k` past 20 to compensate — that buries the good hits.
+  class). With the default `top_k: 100` you're already at the maximum
+  candidate pool — widening further (impossible) wouldn't help; tighten
+  `min_score` / `min_score_diff` or sharpen the query instead.
 
 ### Concrete recipes
 
