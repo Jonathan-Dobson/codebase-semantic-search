@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-07-04
+## [0.2.1] - 2026-07-04
+
+### Fixed
+- **CLI and MCP server version reporting** — both consumers now read
+  the version from `package.json` (via the new `src/version.ts` shared
+  module) instead of hardcoding `'0.1.0'`. Previously `codesearch --version`
+  and the MCP `serverInfo.version` field both reported `0.1.0` even after
+  the package was bumped to `0.2.0`; the next bump only needs to touch
+  `package.json` now.
 
 First stable release of the 0.2.x series. Consolidates the four
 0.2.0-beta.x pre-releases with no API changes since 0.2.0-beta.4.
