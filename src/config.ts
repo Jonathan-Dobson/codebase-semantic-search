@@ -88,11 +88,11 @@ function buildConfig(): Config {
   const env = process.env;
 
   const workspaceRoot = path.resolve(projectRoot, rc.workspaceRoot ?? '.');
-  const stateFile = path.join(
-    path.dirname(__filename),
-    '..',
-    '.search-index-state.json',
-  );
+  // State lives at the project root, NOT inside node_modules — any
+  // `npm install` of this package would otherwise wipe the indexer's
+  // mtime ledger and silently degrade incremental mode to a full reindex.
+  // See 0.2.4 fix: root-scoped state survives reinstalls.
+  const stateFile = path.join(projectRoot, '.search-index-state.json');
 
   return {
     ...DEFAULTS,

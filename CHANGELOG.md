@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-07-04
+
+### Fixed
+- **Index state file moved out of `node_modules`** — `stateFile` now
+  resolves to `<projectRoot>/.search-index-state.json` instead of
+  `node_modules/codebase-semantic-search/.search-index-state.json`.
+  Previously, any `npm install` of this package would silently wipe the
+  indexer's mtime ledger, which caused `codesearch index` (incremental)
+  to fall through to a full reindex of the entire codebase on the next
+  run. Symptom: identical batch counts from `index --full` and `index`
+  in quick succession, even when no files changed. The state survives
+  reinstalls now.
+
 ## [0.2.3] - 2026-07-04
 
 ### Changed

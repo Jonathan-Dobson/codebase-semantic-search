@@ -1,6 +1,6 @@
 {
   "name": "codebase-semantic-search",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Local semantic search engine for any codebase. MCP + HTTP + file watcher. Reuses Ollama embeddings + Milvus vector storage.",
   "type": "module",
   "main": "dist/cli.js",
