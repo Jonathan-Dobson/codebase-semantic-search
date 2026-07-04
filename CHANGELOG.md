@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-beta.1] - 2026-07-04
+
+Two breaking changes in this release: leaner default `/search` response
+(per-hit `chunkType` / `module` / `language` now opt-in via `include`),
+and default response format flipped from JSON to markdown (opt back in
+via `format: "json"`). Both migrations are mechanical — one extra
+parameter per request. No data loss, no semantic changes.
+
 ### Added
 - `POST /read` HTTP endpoint — fetch a slice of a file between two
   1-indexed inclusive line numbers. Semantics match
@@ -81,9 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Allowed values: `"markdown"`, `"json"`. Unknown value returns HTTP
   400 with the allowed list. Other endpoints (`/clip/:id`, `/clips`,
   `/read`) remain JSON-only.
+- **`src/render-search.ts`** — shared markdown renderer used by both the
+  HTTP server and the MCP server so both formats stay in lockstep.
 
 ### Changed (breaking)
-
 - **`POST /search` and `codebase_semantic_search` response shape** —
   the per-result fields `chunkType`, `module`, `language` are no longer
   included by default in JSON responses. Default response now contains
@@ -111,15 +120,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README `HTTP API` section now documents `/search`, `/read`, `/clip/:id`,
   and `/clips` (GET + POST) with response shapes, field glossary, score
   interpretation, and the typical search→clip→edit workflow. MCP server
-  section documents all four tools.
+  section documents all four tools and the new `format` parameter.
 - Agent and Copilot instruction snippets (`templates/*.md`) substantially
   enriched: full field reference table, score interpretation bands
   (≥0.75 strong / 0.55–0.75 review / <0.55 noise), query-crafting
   guidance, concrete recipes, the search→clip and search→read workflows,
-  and a clear "which to pick" table. New projects scaffolded by
-  `codesearch init` get the full guidance automatically; existing projects
-  need to delete the `<!-- BEGIN:codesearch -->` markers in their agent
-  files and re-run `init` to refresh.
+  a clear "which to pick" table, and the markdown default + `format`
+  opt-in. New projects scaffolded by `codesearch init` get the full
+  guidance automatically; existing projects need to delete the
+  `<!-- BEGIN:codesearch -->` markers in their agent files and re-run
+  `init` to refresh.
 - `codebase_read_file` MCP tool refactored to use the shared
   `readFileSlice` helper. Behavior unchanged from the caller's view.
 
@@ -130,10 +140,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The clip store is **ephemeral**. Server restart clears the table. Agents
   that get "id not found or expired" should just re-run the search — the
   underlying files haven't changed.
-- No new dependencies. No env var changes. No breaking changes to
-  existing endpoints or tool schemas. `/search`, `/stats`, `/health`,
-  and the `codebase_semantic_search` / `codebase_stats` MCP tools are
-  unchanged.
+- No new dependencies. No env var changes.
+- Breaking changes are scoped to `/search` and `codebase_semantic_search`.
+  All other endpoints and tools (`/stats`, `/health`, `codebase_read_file`,
+  `codebase_clip`, `codebase_stats`) are unchanged.
 
 ## [0.1.0-beta.1] - 2026-07-04
 
