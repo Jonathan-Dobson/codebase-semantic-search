@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-04
+
+First stable release of the 0.2.x series. Consolidates the four
+0.2.0-beta.x pre-releases with no API changes since 0.2.0-beta.4.
+See the beta entries below for the full change history since 0.1.0.
+
 ### Fixed
 - **README**: dropped `2379 etcd` from the host port list — etcd is an
   internal Milvus dependency, not exposed to the host in
