@@ -75,7 +75,7 @@ running `codesearch up` and the bundled compose will respect it.
 ┌─────────────────────────────────────────────────────────┐
 │             Agent (Claude Code, Copilot, …)             │
 └────────────────────────┬────────────────────────────────┘
-                         │  stdio MCP / HTTP POST /search
+                         │  stdio MCP / HTTP POST /search, /read, /clip/:id, /clips
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │              codesearch (Node.js, TypeScript)            │
@@ -186,6 +186,8 @@ All config is overridable via `.codesearchrc.json` or env vars
 
 Base URL: `http://localhost:7700` (port overridable via `SEARCH_PORT`).
 
+### `POST /search` — semantic search by meaning
+
 ```
 POST /search
 Content-Type: application/json
@@ -195,18 +197,189 @@ Content-Type: application/json
   "top_k": 10,
   "module": "platform",         // optional filter
   "language": "typescript",     // optional filter
-  "chunk_type": "function"      // optional filter
+  "chunk_type": "function",     // optional filter
+  "min_score": 0.7              // optional quality threshold (0..1)
 }
 ```
 
-Other endpoints: `GET /health`, `GET /stats`.
+Response: `{ success, data: { query, results: [{ id, filePath, symbolName, chunkType, startLine, endLine, content, score, module, language }], count, topK, clipStoreSize, minScore?, candidatesBeforeFilter? } }`.
+
+- `score` is 0..1 cosine similarity — ≥0.75 = strong, 0.55–0.75 = review,
+  <0.55 = likely noise.
+- `id` is a **short numeric handle** assigned at search time. Pass it to
+  `GET /clip/:id` (or `/clips`) to fetch the full text without re-encoding
+  the path + line range.
+- `clipStoreSize` reports the current in-memory clip-store size.
+- `minScore` and `candidatesBeforeFilter` are echoed only when `min_score`
+  was supplied.
+
+#### `min_score` semantics
+
+Quality filter applied **after** the vector search. The engine asks Milvus
+for `top_k` candidates, then drops anything below `min_score`. So the
+response may contain fewer than `top_k` results — that's by design (you
+asked for "up to `top_k` results that score ≥ `min_score`"). Bump `top_k`
+(e.g. 30) if you need a guaranteed minimum count of qualifying hits.
+
+Recommended bands:
+- **0.75+** — strong, relevant matches; safe to act on.
+- **0.55–0.75** — worth reviewing; context may help disambiguate.
+- **< 0.55** — likely noise; widen the query or add filters instead of
+  lowering the threshold.
+
+Validation: `min_score` must be a finite number in `[0, 1]`. Out-of-range
+or non-numeric values return HTTP 400.
+
+### `GET /clip/:id` — fetch one clip by its short id
+
+```
+GET /clip/42
+```
+
+Returns: `{ success, data: { id, filePath, startLine, endLine, totalLines, content } }`.
+
+The id is assigned by `/search`. The underlying `(filePath, startLine,
+endLine)` is stored in an in-memory table keyed by id. Use this when you
+want the chunk back exactly as the search returned it.
+
+### `GET /clips?ids=1,2,3` — batch fetch (small batches, curl-friendly)
+
+```
+GET /clips?ids=42,17,99
+```
+
+Accepts both `?ids=1,2,3` (comma-separated) and `?ids=1&ids=2&ids=3`
+(repeated param). Max 500 ids per request.
+
+### `POST /clips` — batch fetch (large batches)
+
+```
+POST /clips
+Content-Type: application/json
+
+{ "ids": [42, 17, 99, 128, 256] }
+```
+
+Same batch cap (500 ids). Use this when the query-string approach gets
+unwieldy.
+
+**Batch response shape** (both GET and POST):
+
+```json
+{
+  "success": true,
+  "data": {
+    "results": [
+      { "id": 42, "success": true,  "filePath": "...", "startLine": 1, "endLine": 50, "totalLines": 191, "content": "..." },
+      { "id": 99, "success": false, "error": "id not found or expired. Re-run /search to get a fresh id." }
+    ],
+    "requested": 2,
+    "succeeded": 1,
+    "failed": 1,
+    "clipStoreSize": 142
+  }
+}
+```
+
+Per-item errors do NOT abort the batch — one bad id returns
+`success: false` in its slot, the rest proceed.
+
+### `POST /read` — fetch a file slice by raw line range
+
+Use this when you want to expand a chunk's context (e.g. `startLine - 5` to
+`endLine + 5` to see the surrounding function/class). Semantics match
+`sed -n '<start>,<end>p' <filePath>`.
+
+```
+POST /read
+Content-Type: application/json
+
+{
+  "filePath": "server/src/modules/billing/routes.ts",
+  "startLine": 42,
+  "endLine": 95
+}
+```
+
+Response: `{ success, data: { filePath, startLine, endLine, totalLines, rangeRequested, content } }`.
+
+**Limits shared by `/read`, `/clip/:id`, `/clips`:**
+
+- **Range cap:** 500 lines per call. Chain reads to paginate larger ranges.
+- **File size cap:** 25 MB (HTTP 413 if exceeded). Protects against OOM
+  when an agent points at a huge generated file.
+- **Path safety:** `filePath` is resolved relative to the workspace root.
+  Absolute paths and `../` escapes are rejected with HTTP 403.
+- **Not found:** HTTP 404.
+
+### Clip store: how ids work
+
+The clip store is a per-process, in-memory `Map<id, {filePath, startLine, endLine}>`:
+
+- **Auto-increment numeric ids** (1, 2, 3, …). Short — easier to log,
+  curl, and pass through agent context than encoded base64.
+- **Dedup** on `(filePath, startLine, endLine)` — the same chunk always
+  returns the same id across searches.
+- **FIFO eviction at 10K entries** — once full, the oldest inserted id is
+  dropped to make room. Long-idle ids may return 404 ("not found or expired").
+- **Ephemeral** — server restart clears the table. Agents mid-session can
+  just re-search; no data loss.
+- **Per-process** — the MCP server has its own table; an HTTP `/search`
+  id is not resolvable by an MCP `codebase_clip` call (they're separate
+  processes). Run a search in the same process that will resolve the ids.
+
+### Typical workflow
+
+```bash
+# 1. search — results carry ids
+curl -s http://localhost:7700/search -H "Content-Type: application/json" \
+  -d '{"query": "how invoices are created", "chunk_type": "function"}'
+
+# 2a. shortcut — fetch by id (recommended for the common case)
+curl -s http://localhost:7700/clip/42
+
+# 2b. expand context — fetch by raw filePath + adjusted range
+curl -s -X POST http://localhost:7700/read -H "Content-Type: application/json" \
+  -d '{"filePath": "server/src/modules/billing/routes.ts", "startLine": 38, "endLine": 95}'
+```
+
+### Other endpoints
+
+`GET /health` — liveness check. `GET /stats` — collection stats (chunk count, etc.).
 
 ## MCP Server
 
-Spawns a stdio MCP server exposing two tools:
+Spawns a stdio MCP server exposing four tools:
 
-- `codebase_semantic_search` — query the index by meaning
-- `codebase_stats` — chunk count and collection name
+- `codebase_semantic_search` — query the index by meaning. Args:
+  `query` (natural language), `top_k` (1–50, default 10), `module`,
+  `language`, `chunk_type`, `min_score` (optional filters; `min_score`
+  drops hits below the cosine-similarity threshold after the vector
+  search). Returns ranked hits with `id`, `filePath`, `symbolName`,
+  `chunkType`, `startLine`, `endLine`, `content`, `score`, `module`,
+  `language`. When `min_score` is set, response also includes
+  `minScore` and `candidatesBeforeFilter`.
+- `codebase_clip` — fetch a clip by its short numeric id from the
+  in-memory store. Args: EITHER `id: number` (single) OR `ids: number[]`
+  (batch). Ids are assigned by `codebase_semantic_search` and are valid
+  for the lifetime of this MCP process (FIFO evict at 10K entries;
+  cleared on restart).
+- `codebase_read_file` — fetch a slice of a file by line range
+  (`sed -n '<start>,<end>p'` semantics). Args: `filePath` (relative to
+  workspace root), `startLine` (1-indexed inclusive), `endLine`
+  (1-indexed inclusive). 500 lines per call, 25 MB file cap. Use it to
+  expand the context around a hit returned by `codebase_semantic_search`
+  without re-loading the whole file.
+- `codebase_stats` — chunk count, collection name, embedding model.
+
+Typical workflow:
+
+```text
+1. codebase_semantic_search(query="how invoices are created")          → results[] (each has an id)
+2a. codebase_clip(ids=[r.id for r in results])                        → full text of each
+2b. codebase_read_file(filePath=results[0].filePath, startLine=…, endLine=…)  // expand context around one
+3. make your edit in the lines you've now seen in full
+```
 
 Register it with your agent runtime:
 
@@ -252,6 +425,8 @@ codebase-semantic-search/
 │   ├── watcher.ts           # Chokidar file watcher
 │   ├── mcp-server.ts        # stdio MCP server
 │   ├── indexer.ts           # reindex library (used by index + watch)
+│   ├── clip-store.ts        # in-memory store of clip refs (FIFO evict)
+│   ├── read-clip.ts         # shared file-slice helper (path safety, caps)
 │   └── commands/
 │       ├── init.ts          # scaffold config + agent files + docker-compose
 │       ├── doctor.ts        # prereq check
