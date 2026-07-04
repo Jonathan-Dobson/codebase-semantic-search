@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Default `top_k` bumped from 10 to 30** on `/search` and
+  `codebase_semantic_search`. Returns more candidates before the
+  relative filter (`min_score_diff: 0.1`) drops low-relevance hits.
+  Max cap unchanged at 50. To request fewer results, set `top_k`
+  explicitly.
+
 ## [0.2.0-beta.2] - 2026-07-04
 
 Two related changes: a new `min_score_diff` relative quality filter, and

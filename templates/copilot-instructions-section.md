@@ -19,7 +19,7 @@ curl -s http://localhost:7700/search \
   -d '{"query": "<natural language>"}'
 ```
 
-Defaults applied: `top_k: 10` and `min_score_diff: 0.1` (drop anything more
+Defaults applied: `top_k: 30` and `min_score_diff: 0.1` (drop anything more
 than 10% below the best match). To override or add filters, see "Optional
 filters" below.
 
@@ -69,7 +69,7 @@ src/transactions/clawback.ts:18-38 • ClawbackTx • score: 0.7353 • id: 2
 
 | filter            | matches against                                | default  | examples                                          |
 |-------------------|------------------------------------------------|----------|---------------------------------------------------|
-| `top_k`           | number of candidates requested from Milvus     | `10`     | `5` for "give me the top 5"                       |
+| `top_k`           | number of candidates requested from Milvus     | `30`     | `5` for "give me the top 5"                       |
 | `module`          | first path segment under the workspace root    | —        | `src`, `server/src/modules/billing`, `docs`       |
 | `language`        | file language                                  | —        | `typescript`, `tsx`, `javascript`, `markdown`, `json`, `yaml`, `terraform`, `python` |
 | `chunk_type`      | AST node type (TS/JS) or section kind (md)     | —        | `function`, `class`, `interface`, `section`, `block` |

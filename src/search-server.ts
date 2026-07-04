@@ -97,7 +97,7 @@ export function createApp(): Express {
     try {
       const {
         query,
-        top_k = 10,
+        top_k,
         module,
         language,
         chunk_type,
@@ -114,7 +114,7 @@ export function createApp(): Express {
         return;
       }
 
-      const topK = Math.min(Math.max(1, Number(top_k) || 10), 50);
+      const topK = Math.min(Math.max(1, Number(top_k) || 30), 50);
 
       // Parse response format. Default = markdown. JSON is opt-in for
       // programmatic extraction. Unknown value or wrong type = 400.

@@ -199,7 +199,7 @@ Content-Type: application/json
 }
 ```
 
-Defaults applied: `top_k: 10` and `min_score_diff: 0.1` (drop anything more
+Defaults applied: `top_k: 30` and `min_score_diff: 0.1` (drop anything more
 than 10% below the best match). To override or add filters:
 
 ```
@@ -208,7 +208,7 @@ Content-Type: application/json
 
 {
   "query": "how does tenant isolation work in mongoose queries",
-  "top_k": 10,                   // optional, default 10, max 50
+  "top_k": 30,                   // optional, default 30, max 50
   "module": "platform",           // optional filter
   "language": "typescript",       // optional filter
   "chunk_type": "function",       // optional filter
@@ -387,7 +387,7 @@ Response echo when applied:
 
 Recommended bands:
 - **0.05–0.15** — strict; typically keeps 3–8 hits on a sizeable codebase
-  with `top_k: 10`. The default (`0.1`) sits in the middle of this band.
+  with `top_k: 30`. The default (`0.1`) sits in the middle of this band.
 - **0.2–0.3** — lenient; useful when the top match is strong but the
   semantic space drops off sharply below it.
 
@@ -517,7 +517,7 @@ curl -s -X POST http://localhost:7700/read -H "Content-Type: application/json" \
 Spawns a stdio MCP server exposing four tools:
 
 - `codebase_semantic_search` — query the index by meaning. Args:
-  `query` (natural language), `top_k` (1–50, default 10), `module`,
+  `query` (natural language), `top_k` (1–50, default 30), `module`,
   `language`, `chunk_type`, `min_score` (absolute quality threshold,
   0..1), `min_score_diff` (relative quality threshold, 0..1, **default
   0.1**, mutually exclusive with `min_score`), `include` (opt-in
