@@ -1,5 +1,10 @@
 # codebase-semantic-search
 
+> **Project location:** `/Users/jdobson/developer/150-codebase-semantic-search/`
+> — migrated 2026-08-21 from `~/developer/codebase-semantic-search/` to conform
+> with the project-folder convention. See [`AGENTS.md`](./AGENTS.md) for the
+> remote setup (this repo has two: `github` real, `origin` local mirror).
+
 A local, project-agnostic **semantic search engine** for any codebase. Drop
 it into a project, point it at your source dirs, and any agent (Claude
 Code, GitHub Copilot Chat, OpenCode, Codex) or human can query it by
