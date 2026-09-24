@@ -64,9 +64,24 @@ export async function ensureCollection(): Promise<void> {
   console.log(`Collection "${collectionName}" created and loaded.`);
 }
 
+/** Pair chunks with their embeddings, dropping any chunk whose embedding failed (null). */
+export function pairEmbedded(
+  chunks: Chunk[],
+  embeddings: (number[] | null)[],
+): { kept: [Chunk, number[]][]; skipped: Chunk[] } {
+  const kept: [Chunk, number[]][] = [];
+  const skipped: Chunk[] = [];
+  chunks.forEach((chunk, idx) => {
+    const emb = embeddings[idx];
+    if (Array.isArray(emb)) kept.push([chunk, emb]);
+    else skipped.push(chunk);
+  });
+  return { kept, skipped };
+}
+
 export async function upsertChunks(
   chunks: Chunk[],
-  embeddings: number[][],
+  embeddings: (number[] | null)[],
 ): Promise<void> {
   const milvus = getMilvusClient();
   const collectionName = CONFIG.collectionName;
@@ -78,9 +93,18 @@ export async function upsertChunks(
     const batchChunks = chunks.slice(i, i + batchSize);
     const batchEmbeddings = embeddings.slice(i, i + batchSize);
 
-    const data = batchChunks.map((chunk, idx) => ({
+    const { kept, skipped } = pairEmbedded(batchChunks, batchEmbeddings);
+    if (skipped.length > 0) {
+      console.warn(
+        `\n  Skipped ${skipped.length} chunk(s) with no embedding: `
+          + skipped.map((c) => `${c.filePath}:${c.startLine}`).join(', '),
+      );
+    }
+    if (kept.length === 0) continue;
+
+    const data = kept.map(([chunk, embedding]) => ({
       id: chunk.id,
-      embedding: batchEmbeddings[idx],
+      embedding,
       file_path: chunk.filePath,
       language: chunk.language,
       module: chunk.module,

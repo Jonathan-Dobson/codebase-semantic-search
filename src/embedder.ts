@@ -56,8 +56,8 @@ export async function embedQuery(query: string): Promise<number[]> {
 export async function embedBatch(
   texts: string[],
   batchSize = 10,
-): Promise<number[][]> {
-  const results: number[][] = [];
+): Promise<(number[] | null)[]> {
+  const results: (number[] | null)[] = [];
 
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
@@ -69,8 +69,10 @@ export async function embedBatch(
           console.warn(
             `\n  Warning: embedding failed for text (${t.length} chars): ${err.message}`,
           );
-          // Return zero vector as fallback
-          return new Array(CONFIG.embeddingDimensions).fill(0);
+          // null = "not embedded". This used to be a zero vector, which has no direction,
+          // so its similarity to any query is meaningless — the chunk was indexed as noise.
+          // upsertChunks skips nulls and reports them.
+          return null;
         }
       }),
     );

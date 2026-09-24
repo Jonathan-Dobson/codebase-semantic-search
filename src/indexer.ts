@@ -11,6 +11,7 @@ import {
   loadIndexState,
   saveIndexState,
   getChangedFiles,
+  pathsToClear,
   type IndexState,
 } from './walker.js';
 import { chunkFile, type Chunk } from './chunker.js';
@@ -82,9 +83,14 @@ export async function runIndexer(opts: IndexOptions = {}): Promise<void> {
   }
   await ensureCollection();
 
-  if (filesToDelete.length > 0) {
-    log(`Deleting stale chunks for ${filesToDelete.length} files...`);
-    await deleteByFilePaths(filesToDelete);
+  // Removed files AND changed files: a changed file's old chunks must go too, or any edit
+  // that moves a chunk boundary leaves the old chunk behind. (Full mode dropped everything.)
+  if (!full) {
+    const stale = pathsToClear({ toIndex: filesToIndex, toDelete: filesToDelete });
+    if (stale.length > 0) {
+      log(`Deleting stale chunks for ${stale.length} files...`);
+      await deleteByFilePaths(stale);
+    }
   }
 
   log('Chunking files...');

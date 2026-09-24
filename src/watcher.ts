@@ -8,6 +8,7 @@ import {
   loadIndexState,
   saveIndexState,
   getChangedFiles,
+  pathsToClear,
   type IndexState,
 } from './walker.js';
 import { chunkFile, type Chunk } from './chunker.js';
@@ -64,11 +65,13 @@ async function runIncremental(reason: string): Promise<void> {
       return;
     }
 
-    if (toDelete.length > 0) {
+    // Removed AND changed files — see pathsToClear.
+    const stale = pathsToClear({ toIndex, toDelete });
+    if (stale.length > 0) {
       console.log(
-        `[watch] Deleting chunks for ${toDelete.length} removed file(s)...`,
+        `[watch] Deleting old chunks for ${stale.length} file(s) (${toDelete.length} removed)...`,
       );
-      await deleteByFilePaths(toDelete);
+      await deleteByFilePaths(stale);
     }
 
     const allChunks: Chunk[] = [];
