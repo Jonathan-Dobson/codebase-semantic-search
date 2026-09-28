@@ -2,7 +2,7 @@
 
 ## What this is
 The `codesearch` engine — a local semantic-search service for any
-codebase. v0.2.4 (npm package `codebase-semantic-search`, bin
+codebase. v0.2.5 (npm package `codebase-semantic-search`, bin
 `codesearch`). Combines Ollama embeddings + Milvus vector storage +
 file-watcher + MCP server + HTTP API.
 
@@ -29,7 +29,7 @@ Per agent memory rule "Multi-remote repos: verify before push": always
 ├── .github/             # workflows
 ├── README.md            # 32K — full user-facing docs
 ├── CHANGELOG.md         # version history
-├── package.json         # version 0.2.4, type: module
+├── package.json         # version 0.2.5, type: module
 ├── docker-compose.search.yml   # local Milvus + Ollama + engine stack
 └── AGENTS.md            # this file
 ```
