@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-09-28
+
 ### Fixed
 - **Incremental reindex left an edited file's old chunks in the collection forever.**
   Chunk ids are `hash(path:startLine)`, so an upsert only replaced a chunk whose start line
