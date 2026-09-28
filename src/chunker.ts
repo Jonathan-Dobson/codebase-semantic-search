@@ -33,11 +33,12 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
-function chunkByLines(content: string, maxTokens: number, overlap: number): { text: string; startLine: number; endLine: number }[] {
+export function chunkByLines(content: string, maxTokens: number, overlap: number): { text: string; startLine: number; endLine: number }[] {
   const lines = content.split('\n');
   const chunks: { text: string; startLine: number; endLine: number }[] = [];
 
   let start = 0;
+  let prevEnd = 0;
   while (start < lines.length) {
     let end = start;
     let text = '';
@@ -49,6 +50,18 @@ function chunkByLines(content: string, maxTokens: number, overlap: number): { te
       end++;
     }
 
+    // A window that ends where the previous one ended is a strict subset of it. That
+    // happens whenever a chunk holds <= `overlap` lines (e.g. long markdown table rows):
+    // `end - overlap` lands at or behind `start`, the `start + 1` guard wins, and the
+    // window crawls forward one line at a time re-emitting near-identical text, which
+    // then ties on score and crowds out every other search result. Restart at the
+    // previous end with no overlap instead; the rebuilt window always takes >= 1 new line.
+    if (end <= prevEnd && start < prevEnd) {
+      start = prevEnd;
+      continue;
+    }
+    prevEnd = end;
+
     if (text.trim()) {
       chunks.push({
         text: text.trimEnd(),
@@ -57,7 +70,10 @@ function chunkByLines(content: string, maxTokens: number, overlap: number): { te
       });
     }
 
-    start = Math.max(start + 1, end - overlap);
+    // Never overlap more than half the chunk just emitted: with long lines a chunk can hold
+    // fewer lines than `overlap`, and a full overlap then re-emits most of it every step.
+    const effectiveOverlap = Math.min(overlap, Math.floor((end - start) / 2));
+    start = Math.max(start + 1, end - effectiveOverlap);
     if (end >= lines.length) break;
   }
 

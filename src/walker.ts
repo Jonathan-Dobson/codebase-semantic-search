@@ -72,15 +72,20 @@ export async function walkFiles(): Promise<FileEntry[]> {
       continue; // silently skip — many projects won't have all of these
     }
 
-    const matches = await glob('**/*', {
-      cwd: dirPath,
-      nodir: true,
-      absolute: false,
-      dot: false,
-    });
+    // An entry may name a single file (e.g. a root README.md or AGENTS.md). Globbing
+    // '**/*' with a file as cwd matches nothing, so such an entry used to be silently empty.
+    const isFile = fs.statSync(dirPath).isFile();
+    const matches = isFile
+      ? [path.basename(dirPath)]
+      : await glob('**/*', {
+          cwd: dirPath,
+          nodir: true,
+          absolute: false,
+          dot: false,
+        });
 
     for (const match of matches) {
-      const relativePath = path.join(dir, match);
+      const relativePath = isFile ? path.normalize(dir) : path.join(dir, match);
 
       if (ig.ignores(relativePath)) continue;
 
@@ -166,4 +171,17 @@ export function getChangedFiles(
   );
 
   return { toIndex, toDelete };
+}
+
+/**
+ * Every path whose existing chunks must be deleted before an incremental upsert: removed
+ * files AND changed files. Chunk ids are hash(path:startLine), so an upsert only replaces a
+ * chunk whose start line did not move — without clearing a changed file first, every edit
+ * that shifts a chunk boundary leaves the old chunk in the collection forever.
+ */
+export function pathsToClear(changes: {
+  toIndex: FileEntry[];
+  toDelete: string[];
+}): string[] {
+  return [...new Set([...changes.toDelete, ...changes.toIndex.map((f) => f.relativePath)])];
 }

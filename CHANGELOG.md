@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Incremental reindex left an edited file's old chunks in the collection forever.**
+  Chunk ids are `hash(path:startLine)`, so an upsert only replaced a chunk whose start line
+  had not moved, and incremental mode deleted chunks only for *removed* files. Any edit that
+  shifted a chunk boundary left the old chunk behind. Both `codesearch index` and the watcher
+  now delete a changed file's chunks before re-upserting (`pathsToClear`). In one real
+  project the collection had grown to ~14k chunks for a tree that chunks to ~7k. A full
+  reindex is needed once to purge chunks already left behind.
+- **Near-duplicate chunks from long lines.** When a chunk held no more lines than
+  `chunkOverlapLines` (long markdown table rows), `chunkByLines` advanced one line at a time
+  and re-emitted almost the same text, which tied on score and crowded out other results.
+  Overlap is now capped at half the previous chunk, and a window that adds no new line is
+  never emitted.
+- **A failed embedding was stored as a zero vector**, which has no direction, so its
+  similarity to any query is meaningless. It is now skipped, and the skipped chunks are listed.
+
+### Added
+- **`indexDirs` entries may name a single file** (e.g. a root `README.md` or `AGENTS.md`).
+  Previously a file entry was globbed as a directory and silently matched nothing.
+- **Tests** (`npm test`, `node:test` via `tsx`). `CODESEARCH_IT=1 npm test` also runs an
+  integration test against a live Milvus + Ollama in a throwaway collection.
+
 ## [0.2.4] - 2026-07-04
 
 ### Fixed

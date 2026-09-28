@@ -292,6 +292,10 @@ All config is overridable via `.codesearchrc.json` or env vars
 (`OLLAMA_HOST`, `MILVUS_HOST`, `MILVUS_PORT`, `EMBEDDING_MODEL`,
 `SEARCH_PORT`).
 
+`indexDirs` entries are paths relative to the project root and may name a directory
+(indexed recursively, honouring the root `.gitignore` and `excludePatterns`) or a single
+file — useful for top-level docs such as `README.md` or `AGENTS.md`.
+
 ### The underlying subcommands
 
 `up` is the recommended entry point, but the granular subcommands are still available for fine-grained control:
