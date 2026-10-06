@@ -96,8 +96,9 @@ After registration, the agent has four new tools:
 
 `codesearch up` shells out to three external things on your machine:
 Docker, Ollama, and `curl`. They must already be installed and reachable
-**before** you run `up`. The package itself is pure-JS and installs
-cleanly via npm on any platform Node 20+ runs on.
+**before** you run `up`. The package itself installs cleanly via npm on any
+platform Node 20+ runs on — its only native code is the optional C++ grammar,
+which npm skips if it cannot build (see [C++ support](#c-support-optional-native-grammar)).
 
 | Need | Why | Where |
 |---|---|---|
@@ -108,6 +109,35 @@ cleanly via npm on any platform Node 20+ runs on.
 | **`curl` on your `$PATH`** | `up` uses `curl` to probe Ollama | shipped on macOS / Linux; modern Windows too |
 
 **Verify nothing's missing:** `npx codesearch doctor` (works pre-`init`, prints one line per dep with status and the fix command if anything fails).
+
+### C++ support (optional native grammar)
+
+TypeScript/JavaScript is parsed by `ts-morph`, which is pure JS and always
+installed. C++ (`.cpp .h .hpp .cc .cxx .ipp`) needs `tree-sitter` and
+`tree-sitter-cpp`, which are **native addons** and therefore ship as
+`optionalDependencies`. npm installs them when a build toolchain is present and
+skips them when the build fails, so a machine without a C++ compiler still gets
+a working install.
+
+You do not need to do anything for the common case. If you never index C++, the
+grammar is never loaded.
+
+If the grammar is missing or unloadable, the chunker **warns once** at the first
+C++ file and falls back to line-window chunking for C++ only — JS/TS indexing is
+unaffected and an index run never aborts:
+
+```
+C++ AST chunking unavailable (tree-sitter-cpp not loadable: …). Falling back to
+line-window chunking for .cpp/.h/.hpp/.cc/.cxx/.ipp files.
+```
+
+The fallback is noticeably worse: line windows cut mid-function, so a search
+hit's line range tends to land on a body statement instead of a declaration. If
+you index a large C++ codebase, install the grammar explicitly:
+
+```bash
+npm i tree-sitter tree-sitter-cpp
+```
 
 ### Install Ollama (one-time)
 

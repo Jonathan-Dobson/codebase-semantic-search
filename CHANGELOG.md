@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-07
+
+### Added
+- **C/C++ source files are now collected and AST-chunked.** `.cpp .h .hpp .cc
+  .cxx .ipp` were missing from the language map, so a C++-heavy tree was almost
+  entirely invisible to the indexer — on the rippled mirror, 165 of 2085 files
+  (7.9%) were being collected. `chunkCpp()` walks the file with `tree-sitter`
+  and `tree-sitter-cpp` and emits one chunk per declaration.
+- **The README documents the C++ grammar** as an optional dependency, what the
+  line-window fallback costs you, and how to install the grammar explicitly.
+
+### Fixed
+- **`tree-sitter@0.21.1` could not read any file over 32,768 bytes.** Its
+  `CallbackInput::Read` copies into a fixed `uint16_t` buffer, and the
+  `partial_string` continuation path that would read the rest is dead code, so
+  a large file produced a truncated parse and an `ERROR` node spanning the
+  remainder. The parser is now constructed with an explicit `bufferSize`.
+  Measured on the rippled mirror: **0 of 38 oversized files parsed correctly
+  before, 38 of 38 after.**
+- **Return type was used as the chunk name for C++ functions.** 1,064 of 5,353
+  function chunks (19.9%) were named after their return type rather than the
+  function, so `preflight1Sponsor` was indexed under `void`. 1,206 chunks were
+  renamed; no chunk's content length changed.
+- **Native grammars load lazily and degrade instead of throwing.** The C++
+  parser is constructed on the first C++ chunk, never at import time. If the
+  grammar cannot be loaded, the chunker warns once and falls back to
+  line-window chunking for C++ files only; a JS/TS index run never aborts.
+  `tree-sitter` and `tree-sitter-cpp` moved from `dependencies` to
+  `optionalDependencies` for the same reason — a failed native build no longer
+  breaks `npm install` outright.
+
+### Known limitations
+- Without the optional grammar, C++ falls back to line windows that cut
+  mid-function, so a hit's line range tends to land on a body statement rather
+  than a declaration.
+- `getFlags` chunk ids are `hash(path:startLine)`. Any change to a file's chunk
+  *boundaries* requires `codesearch index --full`; incremental reindex cannot
+  move an existing id.
+
 ## [0.2.5] - 2026-09-28
 
 ### Fixed
