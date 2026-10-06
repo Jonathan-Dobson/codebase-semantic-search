@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **X-macro tables (`.macro`) are now collected and chunked per entry.** These
+  were missing from the language map, so `walkFiles()` dropped them silently.
+  They are not valid C++ — a list of top-level invocations (`TRANSACTION(...)`,
+  `TYPED_SFIELD(...)`) consumed by `#include` into a generator — so they cannot
+  go through `chunkCpp()`, which finds no declarations in them. `chunkMacro()`
+  splits on invocation boundaries by counting paren depth, giving one chunk per
+  table row with the entry's doc comment and its macro identifier as
+  `symbolName`.
+
+  On the rippled mirror this adds 561 chunks across 5 files (82 transaction
+  definitions, 349 serialized fields, 32 ledger entries, 12 granular
+  permissions, 81 feature gates). These files are where rippled keeps its
+  authoritative tables: `include/xrpl/protocol/detail/transactions.macro` is the
+  only place that states which fields each transaction type accepts, and
+  `sfields.macro` maps every field to its serialized type and wire code.
+  Without them the index cannot answer "which fields does AccountSet accept?",
+  which is exactly the question a protocol audit asks. Routing them to the line
+  chunker instead would not help — an 800-token window welds ~40 unrelated
+  `sfields.macro` rows into one chunk.
+
 ## [0.3.0] - 2026-10-07
 
 ### Added

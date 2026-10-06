@@ -43,6 +43,19 @@ const LANGUAGE_MAP: Record<string, string> = {
   '.cxx': 'cpp',
   // Header-only inline implementations, e.g. rippled's `*.ipp`.
   '.ipp': 'cpp',
+  // X-macro tables. These are NOT valid C++ — they are a list of top-level
+  // macro invocations (`TRANSACTION(...)`, `TYPED_SFIELD(...)`) consumed by
+  // `#include` into a generator, so tree-sitter parses them into noise. Mapped
+  // to their own language so chunkFile() routes them to chunkMacro(), which
+  // splits on invocation boundaries and keeps one entry per chunk.
+  //
+  // Unmapped extensions are silently dropped by walkFiles(), and these files
+  // are where a C++ project's authoritative tables live. In rippled that is
+  // `include/xrpl/protocol/detail/*.macro`: every transaction's field list and
+  // every serialized field's type/code live in these five files. Dropping them
+  // makes the index unable to answer "which fields does transaction X accept?"
+  // — precisely the question a protocol audit asks.
+  '.macro': 'macro',
 };
 
 function detectModule(relativePath: string): string {

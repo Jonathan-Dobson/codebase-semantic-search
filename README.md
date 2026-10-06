@@ -139,6 +139,21 @@ you index a large C++ codebase, install the grammar explicitly:
 npm i tree-sitter tree-sitter-cpp
 ```
 
+### X-macro tables (`.macro`)
+
+C/C++ projects that generate code from macros keep their protocol tables in
+`*.macro` files — a list of top-level invocations like
+`TRANSACTION(ttACCOUNT_SET, 3, AccountSet, …)` that a generator expands. In
+rippled these hold the authoritative answer to "which fields does this
+transaction accept?" and "what type is this field?".
+
+These are **not** valid C++, so the AST chunker cannot help; the line chunker
+is worse still, since one 800-token window covers ~40 unrelated table rows.
+`chunkMacro()` splits them on invocation boundaries instead, yielding one chunk
+per row, with the entry's doc comment and its macro identifier attached.
+
+No native dependency: this is pure TypeScript.
+
 ### Install Ollama (one-time)
 
 | OS | Command |

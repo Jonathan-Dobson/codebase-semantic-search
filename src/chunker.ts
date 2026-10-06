@@ -722,6 +722,136 @@ function chunkCpp(file: FileEntry): Chunk[] {
   }
 }
 
+/**
+ * Split an X-macro table into one chunk per top-level macro invocation.
+ *
+ * These files are a list of invocations at column 0 — `TRANSACTION(...)`,
+ * `TYPED_SFIELD(...)`, `GRANULAR_PERMISSION(...)` — consumed by `#include` into
+ * a generator. They are not valid C++, so `chunkCpp()` hands them to
+ * tree-sitter, which finds no declarations and returns nothing useful.
+ *
+ * A line-window split is the wrong shape here too: `sfields.macro` is 445 lines
+ * of 349 entries, so an 800-token window welds ~40 unrelated fields into one
+ * chunk and "what type is sfAmount?" returns a smear. Splitting on invocation
+ * boundaries instead makes each chunk exactly one table row, which is the unit
+ * a reader (and a question) actually wants.
+ *
+ * Each chunk carries the entry's own doc comment and its leading identifier, so
+ * `symbolName` is searchable and the comment is searchable with it. The file
+ * preamble (the `#if !defined(...)` guard and the macro's signature doc) becomes
+ * its own chunk; a trailing entry with no blank line after it is handled by the
+ * same loop as any other.
+ */
+function chunkMacro(file: FileEntry): Chunk[] {
+  const content = fs.readFileSync(file.absolutePath, 'utf-8');
+  const lines = content.split('\n');
+  const chunks: Chunk[] = [];
+
+  // A top-level invocation opens at column 0 with an ALL_CAPS identifier and
+  // `(`. Preprocessor directives (`#if`, `#include`) start with `#`, and
+  // continuation lines are indented, so neither can match.
+  const isInvocation = (line: string): boolean => /^[A-Z][A-Z0-9_]*\(/.test(line);
+
+  // Walk back from an invocation to the doc comment introducing it. Stops at a
+  // blank line so two adjacent entries never merge into one comment.
+  const docStart = (idx: number): number => {
+    let i = idx - 1;
+    while (i >= 0) {
+      const t = lines[i].trim();
+      if (t === '') break;
+      if (t.startsWith('*') || t.startsWith('/*') || t.startsWith('//')) {
+        i -= 1;
+        continue;
+      }
+      break;
+    }
+    return i + 1;
+  };
+
+  // Find the last line of the invocation that opens at `from`, by counting
+  // paren depth rather than pattern-matching the terminator.
+  //
+  // A terminator regex is wrong here: rippled closes entries three different
+  // ways — `}))`, `}))`, and `    ({{sfDomain, SoeOptional}}))` — and the last
+  // one does not start with `)`, so a `^\s*\)+$` match never fires and the scan
+  // runs off the end of the file, swallowing every later entry into this one.
+  // Depth counting is indifferent to how the closing braces are arranged.
+  const invocationEnd = (from: number): number => {
+    let depth = 0;
+    let opened = false;
+    for (let i = from; i < lines.length; i += 1) {
+      // Ignore parens inside string literals and comments on this line.
+      const code = lines[i]
+        .replace(/\/\*.*?\*\//g, '')
+        .replace(/"(?:[^"\\]|\\.)*"/g, '');
+      for (const ch of code) {
+        if (ch === '(') {
+          depth += 1;
+          opened = true;
+        } else if (ch === ')') {
+          depth -= 1;
+        }
+      }
+      if (opened && depth <= 0) return i;
+    }
+    return lines.length - 1;
+  };
+
+  const push = (text: string, chunkType: string, symbolName: string, startLine: number, endLine: number) => {
+    const trimmed = text.replace(/\s+$/, '');
+    if (!trimmed.trim()) return;
+    for (const sub of chunkByLines(trimmed, CONFIG.maxChunkTokens, 0)) {
+      chunks.push({
+        id: hashId(file.relativePath, startLine + sub.startLine - 1),
+        content: sub.text,
+        filePath: file.relativePath,
+        language: file.language,
+        module: file.module,
+        chunkType,
+        symbolName,
+        startLine: startLine + sub.startLine - 1,
+        endLine: startLine + sub.endLine - 1,
+        lastModified: file.lastModified,
+      });
+    }
+  };
+
+  const firstInvocation = lines.findIndex(isInvocation);
+  if (firstInvocation === -1) return chunkFallback(file, content);
+
+  // Preamble: the `#error` guard plus the doc comment documenting the macro's
+  // parameter signature. That doc is what explains what the columns mean.
+  //
+  // It must stop at the FIRST entry's doc comment, not at the invocation line.
+  // Slicing to `firstInvocation` would also swallow that comment into the
+  // preamble, and the entry below then re-claims it — storing those lines
+  // twice and handing the same text two chunks that tie on score.
+  const preambleEnd = docStart(firstInvocation);
+  if (preambleEnd > 0) {
+    push(lines.slice(0, preambleEnd).join('\n'), 'header', '', 1, preambleEnd);
+  }
+
+  let i = firstInvocation;
+  while (i < lines.length) {
+    if (!isInvocation(lines[i])) {
+      i += 1;
+      continue;
+    }
+    const name = lines[i].slice(0, lines[i].indexOf('(')).trim();
+    const start = docStart(i);
+    // The entry runs to the paren-balanced close. Guard against a docStart that
+    // reaches back past the previous entry's end (adjacent entries, no blank
+    // line between them) so one entry can never re-store another's lines.
+    const prevEnd = chunks.length > 0 ? chunks[chunks.length - 1].endLine : 0;
+    const from = Math.max(start, prevEnd);
+    const last = Math.max(from, invocationEnd(i));
+    push(lines.slice(from, last + 1).join('\n'), 'macro', name, from + 1, last + 1);
+    i = last + 1;
+  }
+
+  return chunks.length > 0 ? chunks : chunkFallback(file, content);
+}
+
 function chunkFallback(file: FileEntry, content?: string): Chunk[] {
   const text = content || fs.readFileSync(file.absolutePath, 'utf-8');
   if (!text.trim()) return [];
@@ -751,6 +881,8 @@ export function chunkFile(file: FileEntry): Chunk[] {
         return chunkTypeScript(file);
       case 'cpp':
         return chunkCpp(file);
+      case 'macro':
+        return chunkMacro(file);
       case 'markdown':
         return chunkMarkdown(file);
       default:
