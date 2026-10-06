@@ -684,7 +684,7 @@ codebase-semantic-search/
 │   ├── cli.ts               # entry: commander dispatch
 │   ├── config.ts            # loads .codesearchrc.json + env
 │   ├── walker.ts            # file system walker + mtime diff
-│   ├── chunker.ts           # AST-aware chunker (ts-morph)
+│   ├── chunker.ts           # AST-aware chunker (ts-morph for TS/JS, tree-sitter for C++)
 │   ├── embedder.ts          # Ollama client
 │   ├── milvus.ts            # Milvus client (create/upsert/search/delete)
 │   ├── search-server.ts     # Express HTTP API (humans / curl fallback)

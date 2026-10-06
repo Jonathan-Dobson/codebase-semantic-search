@@ -28,6 +28,21 @@ const LANGUAGE_MAP: Record<string, string> = {
   '.sql': 'sql',
   '.tf': 'terraform',
   '.py': 'python',
+  // C/C++. Mapped to 'cpp' so the walker COLLECTS these files — they were
+  // previously unmapped and silently dropped, which hid ~91% of a C++ codebase.
+  // chunkFile() has a `case 'cpp'` that routes them through chunkCpp(), a
+  // tree-sitter path giving real declaration boundaries and symbol names. The
+  // grammar is lazy-loaded and degrades to chunkFallback() if unavailable.
+  '.cpp': 'cpp',
+  // `.h` is ambiguous (C vs C++ header). Treated as C++: the overwhelmingly
+  // common case in modern codebases. tree-sitter-cpp parses plain C headers
+  // without erroring, so the choice only affects the stored `language` field.
+  '.h': 'cpp',
+  '.hpp': 'cpp',
+  '.cc': 'cpp',
+  '.cxx': 'cpp',
+  // Header-only inline implementations, e.g. rippled's `*.ipp`.
+  '.ipp': 'cpp',
 };
 
 function detectModule(relativePath: string): string {
