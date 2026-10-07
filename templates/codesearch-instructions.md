@@ -69,7 +69,10 @@ than 10% below the best match). Override with explicit filters:
 | `min_score`       | absolute cosine-similarity cutoff (0..1)       | —        | `0.7` for "strong matches only" (mutually exclusive with `min_score_diff`) |
 | `min_score_diff`  | relative cutoff from best hit (0..1)           | `0.1`    | `0.05` strict, `0.3` lenient                      |
 | `include`         | opt-in metadata fields on each hit             | —        | `["chunkType", "module", "language"]`             |
+| `ignore`          | path patterns to leave out (project root-relative) | project `searchIgnore` | `["docs/", "*.md"]`; `[]` searches everything, including what the project ignores by default |
 | `format`          | response format                                | `"markdown"` | `"json"` for structured response             |
+
+When a search leaves paths out, the response says which (`ignored: … (project default; pass ignore: [] to include)`). Mapping code? Keep the default. Looking for a decision, runbook or plan written in prose? Pass `ignore: []`.
 
 ### Score bands
 

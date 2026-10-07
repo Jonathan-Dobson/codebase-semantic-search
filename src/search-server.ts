@@ -11,6 +11,7 @@ import { CONFIG } from './config.js';
 import { putClip, getClip, clipStoreSize } from './clip-store.js';
 import { readFileSlice, READ_MAX_RANGE, READ_MAX_FILE_SIZE } from './read-clip.js';
 import { renderSearchMarkdown, type MarkdownHit } from './render-search.js';
+import { parseIgnore, resolveIgnore, describeIgnore } from './ignore.js';
 
 // Cap on batch ids per /clips request. Keeps response payloads bounded
 // even if a caller dumps the entire store into one request.
@@ -105,6 +106,7 @@ export function createApp(): Express {
         min_score_diff,
         include,
         format,
+        ignore,
       } = req.body;
 
       if (!query || typeof query !== 'string') {
@@ -133,6 +135,15 @@ export function createApp(): Express {
         return;
       }
       const includedFields = includeResult.fields;
+
+      // Path patterns to leave out. Not given = the project default
+      // (searchIgnore in .codesearchrc.json); [] = search everything.
+      const ignoreResult = parseIgnore(ignore);
+      if (!ignoreResult.ok) {
+        res.status(400).json({ success: false, error: ignoreResult.error });
+        return;
+      }
+      const ignored = resolveIgnore(ignoreResult.patterns, CONFIG.searchIgnore);
 
       // Optional absolute threshold (min_score): drop hits below the
       // floor. Mutually exclusive with min_score_diff is checked below.
@@ -193,6 +204,7 @@ export function createApp(): Express {
       if (module) filters.module = String(module);
       if (language) filters.language = String(language);
       if (chunk_type) filters.chunkType = String(chunk_type);
+      if (ignored.patterns.length) filters.ignore = ignored.patterns;
 
       const queryEmbedding = await embedQuery(query);
       const rawResults = await searchChunks(queryEmbedding, topK, filters);
@@ -253,6 +265,7 @@ export function createApp(): Express {
           minScore: minScoreApplied ? minScore : undefined,
           minScoreDiff: minScoreDiffApplied ? minScoreDiff : undefined,
           includedFields: includedArr as IncludeField[] | undefined,
+          ignored: describeIgnore(ignored),
           clipStoreSize: clipStoreSize(),
           hits: mdHits,
         });
@@ -297,6 +310,10 @@ export function createApp(): Express {
       }
       if (includedFields.size > 0) {
         data.includedFields = Array.from(includedFields);
+      }
+      if (ignored.patterns.length > 0) {
+        data.ignored = ignored.patterns;
+        data.ignoreSource = ignored.source;
       }
 
       res.json({

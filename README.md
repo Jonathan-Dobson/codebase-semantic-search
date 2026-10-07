@@ -258,7 +258,8 @@ Spawns a stdio MCP server exposing four tools:
   `language`, `chunk_type`, `min_score` (absolute quality threshold,
   0..1), `min_score_diff` (relative quality threshold, 0..1, **default
   0.1**, mutually exclusive with `min_score`), `include` (opt-in
-  metadata fields to add to each result), `format` (response format:
+  metadata fields to add to each result), `ignore` (path patterns to leave
+  out; see "`ignore` — leave paths out of a search"), `format` (response format:
   `"markdown"` default or `"json"` opt-in). **Default response is a
   single markdown document** with a `# Search: "..."` title and per-hit
   code fences + metadata captions. Pass `format: "json"` for the
@@ -336,6 +337,9 @@ instead of `N × 200`.
 All config is overridable via `.codesearchrc.json` or env vars
 (`OLLAMA_HOST`, `MILVUS_HOST`, `MILVUS_PORT`, `EMBEDDING_MODEL`,
 `SEARCH_PORT`).
+
+`searchIgnore` lists path patterns searches leave out unless a request passes `ignore`
+(see "`ignore` — leave paths out of a search"). Default `[]`: search everything.
 
 `indexDirs` entries are paths relative to the project root and may name a directory
 (indexed recursively, honouring the root `.gitignore` and `excludePatterns`) or a single
@@ -419,6 +423,7 @@ Content-Type: application/json
   "min_score": 0.7,               // optional absolute quality threshold (0..1)
   "min_score_diff": 0.1,          // optional, default 0.1; mutually exclusive with min_score
   "include": ["chunkType", "module", "language"],  // optional opt-in metadata
+  "ignore": ["docs/", "*.md"],    // optional path patterns to leave out; [] = nothing
   "format": "json"                // optional response format; default "markdown"
 }
 ```
@@ -544,6 +549,38 @@ as before; only the body is structured instead of rendered.
 Allowed values: `"chunkType"`, `"module"`, `"language"`. Unknown value or
 wrong type (e.g. a string instead of an array) returns HTTP 400 with the
 allowed list. Omit or pass `[]` for the lean default.
+
+#### `ignore` — leave paths out of a search
+
+A list of path patterns, relative to the project root, whose chunks the search
+leaves out. It's applied in Milvus as part of the vector search, so `top_k` still
+counts kept results, and the index itself is untouched: changing what is ignored
+needs no reindex.
+
+| Pattern | Leaves out |
+|---|---|
+| `docs/` | the `docs` folder (trailing slash = folder) |
+| `docs` | the file `docs`, or a folder of that name |
+| `*.md` | every path matching the wildcard (`*` and `**` match any run of characters, `/` included) |
+| `server/**/README.md` | every `README.md` under `server/` |
+| `server/src/__tests__/` | that folder: `_` and `%` match literally |
+
+At most 20 patterns of up to 200 characters each; anything else returns HTTP 400.
+
+**Project default.** Set `searchIgnore` in `.codesearchrc.json` to choose what is
+left out when a request doesn't pass `ignore`, for example to keep prose out of
+code-mapping queries:
+
+```json
+{ "searchIgnore": ["docs/", "wiki/"] }
+```
+
+A request's own `ignore` replaces the default, and `"ignore": []` searches
+everything. Whenever something was ignored, the response says so: JSON gets
+`ignored` (the patterns) and `ignoreSource` (`"config"` or `"request"`), and the
+markdown summary line reads, for example,
+`ignored: docs/, wiki/ (project default; pass ignore: [] to include)`. That way a
+caller can't miss results without knowing it.
 
 #### `min_score` semantics
 

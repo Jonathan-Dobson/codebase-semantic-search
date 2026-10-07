@@ -26,6 +26,7 @@ import { putClip, getClip, clipStoreSize } from './clip-store.js';
 import { readFileSlice } from './read-clip.js';
 import { renderSearchMarkdown, type MarkdownHit } from './render-search.js';
 import { version } from './version.js';
+import { resolveIgnore, describeIgnore, MAX_IGNORE_PATTERNS, MAX_IGNORE_PATTERN_LENGTH } from './ignore.js';
 
 // Default relative quality threshold. Mirrors the HTTP server constant;
 // single source of truth could be moved to a shared module if more
@@ -94,6 +95,13 @@ server.tool(
       .describe(
         'Opt-in to include these metadata fields on each result. Default response omits chunkType, module, language — they are useful as filter inputs (chunk_type, module, language above) but largely redundant as response fields (derivable from filePath and content).',
       ),
+    ignore: z
+      .array(z.string().min(1).max(MAX_IGNORE_PATTERN_LENGTH))
+      .max(MAX_IGNORE_PATTERNS)
+      .optional()
+      .describe(
+        'Path patterns to leave out, relative to the project root: "docs/" (a folder), "*.md" (wildcard; * matches anything, / included), "server/src/__tests__/". Not given = the project default (searchIgnore in .codesearchrc.json, shown in the response). Pass [] to search everything, including what the project ignores by default.',
+      ),
     format: z
       .enum(['markdown', 'json'])
       .optional()
@@ -112,6 +120,7 @@ server.tool(
     min_score_diff,
     include,
     format,
+    ignore,
   }) => {
     try {
       const userProvidedMinScore = min_score !== undefined;
@@ -130,11 +139,14 @@ server.tool(
       }
 
       const topK = top_k ?? 100;
+      // Not given = the project default (searchIgnore); [] = search everything.
+      const ignored = resolveIgnore(ignore, CONFIG.searchIgnore);
       const queryEmbedding = await embedQuery(query);
       const rawResults = await searchChunks(queryEmbedding, topK, {
         module,
         language,
         chunkType: chunk_type,
+        ignore: ignored.patterns,
       });
 
       // Apply quality filter (if any) before registering clips, so the
@@ -197,6 +209,7 @@ server.tool(
           minScore: userProvidedMinScore ? min_score : undefined,
           minScoreDiff: !userProvidedMinScore ? effectiveMinScoreDiff : min_score_diff,
           includedFields: includedArr,
+          ignored: describeIgnore(ignored),
           clipStoreSize: clipStoreSize(),
           hits: mdHits,
         });
@@ -211,6 +224,7 @@ server.tool(
         count: filtered.length,
         topK,
         filters: { module, language, chunkType: chunk_type },
+        ...(ignored.patterns.length > 0 ? { ignored: ignored.patterns, ignoreSource: ignored.source } : {}),
         clipStoreSize: clipStoreSize(),
         results: hitsWithIds.map((h) => {
           const out: Record<string, unknown> = {
