@@ -428,6 +428,10 @@ Content-Type: application/json
 }
 ```
 
+**Any other field is refused with a 400** that names it and lists the accepted ones, with a
+hint for likely guesses: `{"query": "…", "limit": 5}` answers
+`unknown field: "limit" (did you mean "top_k"?)`. There is no `limit`; use `top_k`.
+
 **Default response is markdown** — a single document with a `# Search: "..."`
 title and one-line summary at the top, then per-hit fenced code blocks
 with a metadata caption line beneath each. Code is the primary matter;

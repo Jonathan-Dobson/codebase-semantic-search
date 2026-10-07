@@ -72,6 +72,8 @@ than 10% below the best match). Override with explicit filters:
 | `ignore`          | path patterns to leave out (project root-relative) | project `searchIgnore` | `["docs/", "*.md"]`; `[]` searches everything, including what the project ignores by default |
 | `format`          | response format                                | `"markdown"` | `"json"` for structured response             |
 
+The HTTP endpoint refuses fields it doesn't know (400), so a wrong guess such as `limit` (use `top_k`) fails loudly instead of being ignored.
+
 When a search leaves paths out, the response says which (`ignored: … (project default; pass ignore: [] to include)`). Mapping code? Keep the default. Looking for a decision, runbook or plan written in prose? Pass `ignore: []`.
 
 ### Score bands

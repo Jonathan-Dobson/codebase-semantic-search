@@ -12,6 +12,7 @@ import { putClip, getClip, clipStoreSize } from './clip-store.js';
 import { readFileSlice, READ_MAX_RANGE, READ_MAX_FILE_SIZE } from './read-clip.js';
 import { renderSearchMarkdown, type MarkdownHit } from './render-search.js';
 import { parseIgnore, resolveIgnore, describeIgnore } from './ignore.js';
+import { unknownFieldsError } from './search-params.js';
 
 // Cap on batch ids per /clips request. Keeps response payloads bounded
 // even if a caller dumps the entire store into one request.
@@ -96,6 +97,12 @@ export function createApp(): Express {
 
   app.post('/search', async (req, res) => {
     try {
+      const unknownFields = unknownFieldsError(req.body);
+      if (unknownFields) {
+        res.status(400).json({ success: false, error: unknownFields });
+        return;
+      }
+
       const {
         query,
         top_k,

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`POST /search` refuses unknown fields with a 400.** They used to be dropped
+  silently, so a caller who sent `limit` (the field is `top_k`) got 100 results
+  and no hint why. The error names each unknown field, suggests the likely one
+  for common guesses (`limit`/`k` → `top_k`, `exclude` → `ignore`, camelCase
+  forms of the snake_case fields), and lists the accepted fields
+  (`src/search-params.ts`). MCP clients already validate arguments against the
+  tool's schema.
+
 ### Added
 - **`ignore` search filter, with a project default (`searchIgnore`).** Searches
   (HTTP `POST /search` and the MCP `codebase_semantic_search` tool) take
