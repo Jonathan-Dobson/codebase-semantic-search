@@ -30,17 +30,18 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
-      # Trusted publishing needs npm 11.5.1 or later; Node 20 ships npm 10.
+      # Trusted publishing needs npm 11.5.1 or later; make sure of it rather than
+      # rely on the version bundled with Node.
       - name: Upgrade npm
         run: npm install -g npm@^11.5.1 && npm --version
 
@@ -70,7 +71,7 @@ jobs:
           npm publish --provenance --tag "$TAG"
 
       - name: Create or update the GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           generate_release_notes: true
