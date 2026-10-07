@@ -55,10 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which is exactly the question a protocol audit asks. Routing them to the line
   chunker instead would not help — an 800-token window welds ~40 unrelated
   `sfields.macro` rows into one chunk.
-
-## [0.3.0] - 2026-10-07
-
-### Added
 - **C/C++ source files are now collected and AST-chunked.** `.cpp .h .hpp .cc
   .cxx .ipp` were missing from the language map, so a C++-heavy tree was almost
   entirely invisible to the indexer — on the rippled mirror, 165 of 2085 files
