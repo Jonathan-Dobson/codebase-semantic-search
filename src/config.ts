@@ -63,6 +63,11 @@ const DEFAULTS = {
   maxChunkTokens: 800,
   chunkOverlapLines: 5,
   mcpServerName: 'codebase-semantic-search',
+  /**
+   * Path patterns searches leave out unless a request passes `ignore`
+   * (see ignore.ts). Empty: search everything.
+   */
+  searchIgnore: [] as string[],
 };
 
 export type Config = typeof DEFAULTS & {

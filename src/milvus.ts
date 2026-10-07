@@ -1,6 +1,7 @@
 import { MilvusClient, DataType, MetricType } from '@zilliz/milvus2-sdk-node';
 import { CONFIG } from './config.js';
 import type { Chunk } from './chunker.js';
+import { buildIgnoreExpr } from './ignore.js';
 
 let client: MilvusClient;
 
@@ -153,6 +154,8 @@ export interface SearchFilters {
   module?: string;
   language?: string;
   chunkType?: string;
+  /** Path patterns to leave out (see ignore.ts). */
+  ignore?: readonly string[];
 }
 
 export async function searchChunks(
@@ -167,6 +170,8 @@ export async function searchChunks(
   if (filters?.module) filterParts.push(`module == "${filters.module}"`);
   if (filters?.language) filterParts.push(`language == "${filters.language}"`);
   if (filters?.chunkType) filterParts.push(`chunk_type == "${filters.chunkType}"`);
+  const ignoreExpr = buildIgnoreExpr(filters?.ignore ?? []);
+  if (ignoreExpr) filterParts.push(`(${ignoreExpr})`);
 
   const filterExpr =
     filterParts.length > 0 ? filterParts.join(' && ') : undefined;

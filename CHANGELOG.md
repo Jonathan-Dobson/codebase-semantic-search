@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`POST /search` refuses unknown fields with a 400.** They used to be dropped
+  silently, so a caller who sent `limit` (the field is `top_k`) got 100 results
+  and no hint why. The error names each unknown field, suggests the likely one
+  for common guesses (`limit`/`k` → `top_k`, `exclude` → `ignore`, camelCase
+  forms of the snake_case fields), and lists the accepted fields
+  (`src/search-params.ts`). MCP clients already validate arguments against the
+  tool's schema.
+
 ### Added
+- **`ignore` search filter, with a project default (`searchIgnore`).** Searches
+  (HTTP `POST /search` and the MCP `codebase_semantic_search` tool) take
+  `ignore`, a list of path patterns relative to the project root: `docs/`
+  (folder), `*.md` (wildcard), `server/src/__tests__/`. Each becomes
+  `not (file_path like "…")` in the Milvus filter, so it's applied inside the
+  vector search, and the index is untouched: no reindex to change what's
+  ignored. `_` and `%` are escaped, because Milvus `like` treats them as
+  wildcards (`src/compo_ents/%` matches `src/components/`).
+
+  `searchIgnore` in `.codesearchrc.json` sets what's left out when a request
+  doesn't say; `ignore: []` searches everything. Responses name what was
+  ignored (`ignored` / `ignoreSource` in JSON, a summary-line note in
+  markdown), so an agent can't silently miss docs it needed.
+
+  Why: indexing prose (`docs/`, `wiki/`) alongside code makes code-mapping
+  queries noisy. The existing `module` / `language` filters match one exact value
+  each, so there was no way to ask for "everything except docs".
 - **X-macro tables (`.macro`) are now collected and chunked per entry.** These
   were missing from the language map, so `walkFiles()` dropped them silently.
   They are not valid C++ — a list of top-level invocations (`TRANSACTION(...)`,

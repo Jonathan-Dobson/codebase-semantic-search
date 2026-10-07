@@ -34,6 +34,8 @@ export interface MarkdownArgs {
   minScore?: number;
   minScoreDiff?: number;
   includedFields?: string[];
+  /** describeIgnore()'s line, when patterns were ignored. */
+  ignored?: string;
   clipStoreSize: number;
   hits: MarkdownHit[];
 }
@@ -51,6 +53,7 @@ export function renderSearchMarkdown(args: MarkdownArgs): string {
   if (args.includedFields && args.includedFields.length > 0) {
     summary.push(`included: ${args.includedFields.join(', ')}`);
   }
+  if (args.ignored) summary.push(args.ignored);
   summary.push(`clip store: ${args.clipStoreSize}`);
   out.push(summary.join(' • '));
   out.push('');
