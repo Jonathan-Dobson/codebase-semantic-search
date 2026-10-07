@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Releases publish with npm trusted publishing (OIDC)** instead of an `NPM_TOKEN`
+  secret. The token had expired, so the v0.3.0 publish failed with a 404 on the PUT. The
+  workflow upgrades npm to 11.5.1 or later, passes no token, checks that the tag matches
+  `package.json`, and can be dispatched with an existing tag to publish it again.
+
 ## [0.3.0] - 2026-10-07
 
 ### Changed
