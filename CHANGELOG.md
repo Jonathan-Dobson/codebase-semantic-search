@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Releases publish with npm trusted publishing (OIDC)** instead of an `NPM_TOKEN`
+  secret. The token had expired, so the v0.3.0 publish failed with a 404 on the PUT. The
+  workflow upgrades npm to 11.5.1 or later, passes no token, checks that the tag matches
+  `package.json`, and can be dispatched with an existing tag to publish it again.
+- **The publish workflow runs on Node 24.** `actions/checkout@v7`, `actions/setup-node@v7` and
+  `softprops/action-gh-release@v3` all target Node 24; `checkout@v4` drew GitHub's Node 20
+  deprecation warning. The build uses Node 24 LTS (Node 20 reached end of life in April 2026).
+  `engines` still allows `>=20`.
+
 ## [0.3.0] - 2026-10-07
 
 ### Changed

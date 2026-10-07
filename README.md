@@ -812,8 +812,8 @@ files, no cloud dependencies, ~50ms per query after a warm cache.
 
 This package publishes to npm automatically via GitHub Actions — see
 [`.github/workflows/publish.yml`](.github/workflows/publish.yml). The
-publish is triggered by pushing a `v*` tag (or via manual dispatch in the
-Actions tab).
+publish is triggered by pushing a `v*` tag. To publish an existing tag again (say,
+after a failed run), dispatch **Publish** from `main` in the Actions tab with that tag.
 
 ### To cut a release
 
@@ -830,15 +830,15 @@ Actions tab).
    `v0.2.0-rc.2` → `rc`. A GitHub Release is opened with auto-generated
    release notes.
 
-### CI prerequisites (one-time, on the repo)
+### CI prerequisites (one-time)
 
-The workflow reads an `NPM_TOKEN` secret from the repo's Actions
-settings. Generate it on npmjs.com
-([npm tokens docs](https://docs.npmjs.com/creating-and-viewing-access-tokens)):
-create a **granular access token** scoped to this repository with
-`Packages and scopes → Read and write`. Paste the value into
-`Settings → Secrets and variables → Actions → New repository secret`
-with name `NPM_TOKEN`. After that, releases are unattended.
+Publishing uses npm **trusted publishing**: npm accepts the workflow's GitHub identity (OIDC),
+so there is no token to store or renew. It's configured on npmjs.com under the package's
+**Settings → Trusted Publisher → GitHub Actions** (owner `Jonathan-Dobson`, repository
+`codebase-semantic-search`, workflow `publish.yml`)
+([npm docs](https://docs.npmjs.com/trusted-publishers)). The workflow needs
+`permissions: id-token: write` and npm 11.5.1 or later, and passes no `NODE_AUTH_TOKEN`.
+Provenance is signed automatically. An `NPM_TOKEN` secret is no longer used and can be deleted.
 
 ## License
 
