@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-07
+
 ### Changed
 - **`POST /search` refuses unknown fields with a 400.** They used to be dropped
   silently, so a caller who sent `limit` (the field is `top_k`) got 100 results
