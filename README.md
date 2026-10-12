@@ -251,7 +251,7 @@ clean process boundaries.
 
 ## MCP Server
 
-Spawns a stdio MCP server exposing four tools:
+Spawns a stdio MCP server (or, with `--http`, one shared HTTP server; see below) exposing four tools:
 
 - `codebase_semantic_search` — query the index by meaning. Args:
   `query` (natural language), `top_k` (1–100, default 100), `module`,
@@ -282,6 +282,39 @@ Spawns a stdio MCP server exposing four tools:
   expand the context around a hit returned by `codebase_semantic_search`
   without re-loading the whole file.
 - `codebase_stats` — chunk count, collection name, embedding model, embedding dimensions.
+
+### One shared server for every session (`mcp --http`)
+
+By default each agent session spawns its own stdio server, a separate Node
+process of roughly 150–200 MB. With many sessions open on one machine that
+adds up (15 sessions ≈ 2.3 GB). `codesearch mcp --http` serves MCP over
+Streamable HTTP instead: one long-running process, one MCP server per
+session inside it, sharing the Milvus client and clip store. Five sessions
+searching at once measured 183 MB in total.
+
+```bash
+npx codesearch mcp --http          # 127.0.0.1:7701 (CONFIG.mcpPort; MCP_PORT or rc "mcpPort" to change)
+npx codesearch mcp --http 7799     # explicit port
+```
+
+Point the agent at it instead of the stdio command, e.g. Claude Code:
+
+```json
+{ "mcpServers": { "codebase-semantic-search": { "type": "http", "url": "http://127.0.0.1:7701/mcp" } } }
+```
+
+It binds to `127.0.0.1` only, refuses requests whose `Host` header isn't
+local (DNS rebinding protection), and has no authentication, the same
+trust level as the HTTP search server. Things to know:
+
+- The server reads `.codesearchrc.json` from **its own** working directory,
+  so `codebase_read_file` resolves paths against that checkout, not the
+  session's. Searches are unaffected: every session already queries the
+  same collection.
+- Clip ids are shared by all sessions on the server (still FIFO at 10K).
+- Something has to keep the process running (a terminal, `nohup`, a
+  systemd user unit). If it is down, the agent's MCP connection fails;
+  the stdio command still works as a fallback.
 
 Typical workflow:
 

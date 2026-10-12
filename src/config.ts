@@ -60,6 +60,8 @@ const DEFAULTS = {
   milvusPort: 19530,
   collectionName: 'codebase_chunks',
   searchPort: 7700,
+  /** Port for `codesearch mcp --http` (MCP over Streamable HTTP). */
+  mcpPort: 7701,
   maxChunkTokens: 800,
   chunkOverlapLines: 5,
   mcpServerName: 'codebase-semantic-search',
@@ -114,6 +116,10 @@ function buildConfig(): Config {
     ),
     searchPort: parseInt(
       env.SEARCH_PORT || String(rc.searchPort ?? DEFAULTS.searchPort),
+      10,
+    ),
+    mcpPort: parseInt(
+      env.MCP_PORT || String(rc.mcpPort ?? DEFAULTS.mcpPort),
       10,
     ),
   };

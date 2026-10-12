@@ -50,7 +50,7 @@
     "provenance": true
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@zilliz/milvus2-sdk-node": "^2.4.9",
     "chokidar": "^4.0.3",
     "commander": "^12.1.0",

@@ -12,6 +12,7 @@ export async function statusCommand(): Promise<void> {
   console.log(`  Milvus host:      ${CONFIG.milvusHost}:${CONFIG.milvusPort}`);
   console.log(`  Collection:       ${CONFIG.collectionName}`);
   console.log(`  Search port:      ${CONFIG.searchPort}`);
+  console.log(`  MCP HTTP port:    ${CONFIG.mcpPort} (codesearch mcp --http)`);
   console.log(`  MCP server name:  ${CONFIG.mcpServerName}\n`);
 
   try {
