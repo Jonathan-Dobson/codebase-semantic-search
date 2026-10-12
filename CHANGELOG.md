@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-12
+
 ### Added
 - **`codesearch mcp --http [port]`: one MCP server process for every agent session.**
   Serves MCP over Streamable HTTP on `127.0.0.1` (default port 7701, `CONFIG.mcpPort`,
