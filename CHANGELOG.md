@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`codesearch mcp --http [port]`: one MCP server process for every agent session.**
+  Serves MCP over Streamable HTTP on `127.0.0.1` (default port 7701, `CONFIG.mcpPort`,
+  `MCP_PORT` or rc `mcpPort`), with one `McpServer` per session sharing the Milvus client
+  and clip store. Each stdio server is its own ~150–200 MB Node process; on a machine with
+  15 agent sessions that was 2.3 GB, against 183 MB measured for one HTTP server with five
+  sessions searching at once. Host-header check (DNS rebinding protection) on; no auth, as
+  for the HTTP search server. `src/mcp-http.ts`, test `test/mcp-http.test.ts`.
+
 ### Changed
+- **`createMcpServer()` builds the MCP server** (`src/mcp-server.ts`) instead of a module-level
+  singleton, so the HTTP transport can build one per session. The stdio command is unchanged.
+- **`@modelcontextprotocol/sdk` floor raised to `^1.29.0`** (the version already locked), for
+  the Streamable HTTP transport and `createMcpExpressApp`.
 - **Releases publish with npm trusted publishing (OIDC)** instead of an `NPM_TOKEN`
   secret. The token had expired, so the v0.3.0 publish failed with a 404 on the PUT. The
   workflow upgrades npm to 11.5.1 or later, passes no token, checks that the tag matches

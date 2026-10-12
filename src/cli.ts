@@ -9,7 +9,7 @@
  *   serve           HTTP search server on CONFIG.searchPort
  *   watch           File watcher — keeps the index in sync, no HTTP
  *   serve:watch     HTTP search server + file watcher in one process
- *   mcp             stdio MCP server (for agents that speak MCP)
+ *   mcp             stdio MCP server (for agents that speak MCP); --http for one shared server
  *   status          Show collection stats and config summary
  */
 import { Command } from 'commander';
@@ -95,6 +95,10 @@ program
   .command('mcp')
   .description(
     'Start the stdio MCP server. Agents that speak MCP (Claude Code, Copilot, etc.) call this via the MCP transport.',
+  )
+  .option(
+    '--http [port]',
+    'Serve MCP over Streamable HTTP on 127.0.0.1 instead of stdio: one process for every agent session (default port: CONFIG.mcpPort, 7701)',
   )
   .action(mcpCommand);
 
